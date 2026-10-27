@@ -1,0 +1,62 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1792823585669,
+      "tag": "0000_bored_namora",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1792823586629,
+      "tag": "0001_atomic_economy",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1792826503665,
+      "tag": "0002_catalog_revision",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1792826504502,
+      "tag": "0003_confirmation_guards",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1792826732834,
+      "tag": "0004_scheduled_prompt_identity",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1793078478095,
+      "tag": "0005_starting_likes",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1793080080966,
+      "tag": "0006_daily_eastern_schedule",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1793081757276,
+      "tag": "0007_social_profiles_streaks",
+      "breakpoints": true
+    }
+  ]
+}
