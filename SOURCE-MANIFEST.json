@@ -1,0 +1,11 @@
+{
+  "project": "Estergram",
+  "export_date": "2026-10-27",
+  "source_commit": "ee81efe7d91b02cddc6a3a244b4118370dc0b7a6",
+  "production_url": "https://viral-algorithm-game.mauveclock20.chatgpt.site",
+  "format": "Tracked source snapshot with collaboration documentation; Git history is not included",
+  "automated_tests_at_release": 37,
+  "database_migrations": 8,
+  "database_contents_included": false,
+  "deployment_access_granted": false
+}
