@@ -17,7 +17,7 @@ pnpm lint
 pnpm build
 ```
 
-The source release passes 57 automated tests and a standard Next.js production build. This does not replace verification of real external credentials and the final hosted deployment.
+The source release passes 58 automated tests and a standard Next.js production build. This does not replace verification of real external credentials and the final hosted deployment.
 
 The source ZIP includes code, assets, tests, migrations, dependency lockfile and setup documentation. Installed dependencies, generated builds, local databases, secrets and the private live-game backup are excluded. Do not upload the private backup or `.env.local` to GitHub.
 

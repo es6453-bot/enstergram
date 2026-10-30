@@ -36,7 +36,7 @@ pnpm lint
 pnpm build
 ```
 
-The suite contains 57 tests covering game rules, anonymous voting privacy, tiers, profiles, streaks, DST, currency conservation, concurrent purchases, transactional libSQL batches, migration rollback, explicit owner access and data restore integrity. Identity linking, concurrent usernames, one-use email tokens and guest privacy are covered too, including a real Auth.js magic-link flow with simulated delivery. Real OAuth and production email delivery require configured services and deployment checks.
+The suite contains 58 tests covering game rules, anonymous voting privacy, tiers, profiles, streaks, DST, currency conservation, concurrent purchases, transactional libSQL batches, migration rollback, explicit owner access and data restore integrity. Identity linking, concurrent usernames, one-use email tokens and guest privacy are covered too, including a real Auth.js magic-link flow with simulated delivery. Real OAuth and production email delivery require configured services and deployment checks.
 
 ## Player and owner pages
 

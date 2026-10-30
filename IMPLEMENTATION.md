@@ -5,7 +5,7 @@
 - [x] Hosted libSQL adapter with atomic write transactions
 - [x] Ten checksum-tracked schema migrations and rollback tests
 - [x] Private legacy-data export and restore without reward replay
-- [x] 57 automated game/platform/auth tests and TypeScript/lint checks
+- [x] 58 automated game/platform/auth tests and TypeScript/lint checks
 - [x] Production-server HTTP checks: unauthenticated API access, forged legacy headers and cross-origin writes rejected
 - [x] Vercel deployment and existing GitHub sign-in verified
 - [x] Guest preview, username onboarding and safe provider linking

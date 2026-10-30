@@ -139,7 +139,7 @@ export function authStore(
       }
       await db.batch([
         stmt(
-          "INSERT INTO auth_identities(provider,subject,user_id,created) VALUES(?,?,?,?) ON CONFLICT(provider,subject) DO NOTHING",
+          "INSERT INTO auth_identities(provider,subject,user_id,created) VALUES(?,?,?,?) ON CONFLICT(provider,subject) DO UPDATE SET user_id=CASE WHEN auth_identities.user_id=excluded.user_id THEN auth_identities.user_id ELSE NULL END",
           account.provider,
           account.providerAccountId,
           account.userId,

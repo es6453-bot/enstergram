@@ -238,6 +238,26 @@ test("concurrent username claims are case insensitive and roll back profile name
     client.close();
   }
 });
+
+test("concurrent provider linking cannot claim the same identity for two players", async () => {
+  const { client, adapter } = await fresh();
+  try {
+    const a = await adapter.createUser(input(null)),
+      b = await adapter.createUser(input(null));
+    const attempts = await Promise.allSettled([
+      adapter.linkAccount(account(a.id, "google", "contended-subject")),
+      adapter.linkAccount(account(b.id, "google", "contended-subject")),
+    ]);
+    assert.equal(attempts.filter((x) => x.status === "fulfilled").length, 1);
+    const linked = await adapter.getUserByAccount({
+      provider: "google",
+      providerAccountId: "contended-subject",
+    });
+    assert.ok([a.id, b.id].includes(linked.id));
+  } finally {
+    client.close();
+  }
+});
 test("email sign-in tokens are consumed atomically once and expired links cannot sign in", async () => {
   const { client, adapter } = await fresh();
   try {
@@ -432,10 +452,13 @@ test("guest projection hides drafts, future prompts, unfinished results, auth ID
       (await client.execute("SELECT total_changes() AS n")).rows[0].n,
       before,
     );
-    await client.execute({sql:"INSERT INTO rounds(id,number,prompt,opens,closes,ends,finalized,config) VALUES('completed',3,'Completed public prompt',?,?,?,?,?)",args:[now-3000,now-2000,now-1000,now-500,cfg]});
-    const completed = await guestData(db,now);
-    assert.equal(completed.results.length,1);
-    assert.deepEqual(completed.results[0].entries,[]);
+    await client.execute({
+      sql: "INSERT INTO rounds(id,number,prompt,opens,closes,ends,finalized,config) VALUES('completed',3,'Completed public prompt',?,?,?,?,?)",
+      args: [now - 3000, now - 2000, now - 1000, now - 500, cfg],
+    });
+    const completed = await guestData(db, now);
+    assert.equal(completed.results.length, 1);
+    assert.deepEqual(completed.results[0].entries, []);
   } finally {
     client.close();
   }
