@@ -9,6 +9,11 @@ export async function GET(request: Request) {
     const identity = await getCurrentUser();
     if (!identity)
       return Response.json({ error: "Sign in to play." }, { status: 401 });
+    if (!identity.onboarded)
+      return Response.json(
+        { error: "Choose your username first.", onboarding: true },
+        { status: 403 },
+      );
     const user = await setup(identity);
     const url = new URL(request.url);
     return Response.json(
@@ -37,6 +42,11 @@ export async function POST(request: Request) {
       return Response.json({ error: "Sign in to play." }, { status: 401 });
     if (Number(request.headers.get("content-length") || 0) > 16000)
       throw new Error("Request too large.");
+    if (!identity.onboarded)
+      return Response.json(
+        { error: "Choose your username first.", onboarding: true },
+        { status: 403 },
+      );
     const user = await setup(identity);
     const bucket = Math.floor(Date.now() / 60000);
     await stmt(

@@ -38,7 +38,8 @@ const schema =
   readFileSync("drizzle/0005_starting_likes.sql", "utf8") +
   readFileSync("drizzle/0006_daily_eastern_schedule.sql", "utf8") +
   readFileSync("drizzle/0007_social_profiles_streaks.sql", "utf8") +
-  readFileSync("drizzle/0008_vercel_identity_links.sql", "utf8");
+  readFileSync("drizzle/0008_vercel_identity_links.sql", "utf8") +
+  readFileSync("drizzle/0009_frictionless_auth.sql", "utf8");
 class Adapter {
   constructor(raw) {
     this.raw = raw;

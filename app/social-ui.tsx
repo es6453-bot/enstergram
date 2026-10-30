@@ -142,6 +142,7 @@ export function ProfileCard({
           </div>
         </div>
         <h2 className="profile-display-name">{profile.name}</h2>
+        {profile.username && <p className="muted">@{profile.username}</p>}
         {title && (
           <p className="profile-title" style={{ color: title.params.primary }}>
             {title.name}

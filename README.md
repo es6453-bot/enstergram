@@ -2,7 +2,7 @@
 
 A daily anonymous writing game with a Likes shop, consumable power-ups, follower tiers, cosmetic profiles, forgiving streaks and an owner dashboard.
 
-This edition uses **Next.js 16, React 19, Auth.js GitHub sign-in and hosted libSQL**. It runs on Vercel's Node.js runtime. It does not depend on Vinext, Cloudflare Worker bindings, Sites identity headers or `.openai/hosting.json`.
+This edition uses **Next.js 16, React 19, Auth.js and hosted libSQL**. Google, passwordless email and GitHub share the existing player database. Public guest browsing and practice require no account. See **[AUTH-SETUP.md](AUTH-SETUP.md)** to enable Google/email; their controls remain unavailable until configured. It runs on Vercel's Node.js runtime. It does not depend on Vinext, Cloudflare Worker bindings, Sites identity headers or `.openai/hosting.json`.
 
 ## Deploy
 
@@ -36,13 +36,16 @@ pnpm lint
 pnpm build
 ```
 
-The suite contains 44 tests covering game rules, anonymous voting privacy, tiers, profiles, streaks, DST, currency conservation, concurrent purchases, transactional libSQL batches, migration rollback, explicit owner access and data restore integrity. Real GitHub OAuth and hosted database connectivity require their configured services and a deployment check.
+The suite contains 57 tests covering game rules, anonymous voting privacy, tiers, profiles, streaks, DST, currency conservation, concurrent purchases, transactional libSQL batches, migration rollback, explicit owner access and data restore integrity. Identity linking, concurrent usernames, one-use email tokens and guest privacy are covered too, including a real Auth.js magic-link flow with simulated delivery. Real OAuth and production email delivery require configured services and deployment checks.
 
 ## Player and owner pages
 
 | Page | Purpose |
 | --- | --- |
-| `/signin` | GitHub sign-in |
+| `/signin` | Google, passwordless email and existing GitHub sign-in |
+| `/guest` | Public prompt/results preview and browser-local practice |
+| `/onboarding` | Username choice for new players |
+| `/account` | Link sign-in methods and change username |
 | `/submit` | Today's response |
 | `/vote` | Anonymous voting on yesterday's responses |
 | `/results` | Final scores, raw/bonus breakdowns and revealed profiles |
@@ -52,7 +55,7 @@ The suite contains 44 tests covering game rules, anonymous voting privacy, tiers
 | `/admin` | Owner content, economy, inventory and profile-system editors |
 | `/api/health` | Deployment readiness status, with no secret values |
 
-Names, prompts, prices, effect parameters, tier thresholds, cosmetics and balance values are editable placeholders stored in the database. Owner access comes from `OWNER_GITHUB_ID`, never from being the first visitor. Blank `ALLOWED_GITHUB_IDS` means owner-only; add verified numeric IDs to invite the group.
+Names, prompts, prices, effect parameters, tier thresholds, cosmetics and balance values are editable placeholders stored in the database. Owner access comes from `OWNER_GITHUB_ID`, never from being the first visitor. Blank `ALLOWED_GITHUB_IDS` restricts GitHub to the owner. Configured Google/email enable verified-player registration. Existing players should link new methods in Account settings first.
 
 ## Game guarantees
 

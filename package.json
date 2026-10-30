@@ -15,7 +15,7 @@
     "db:migrate": "node scripts/migrate.mjs",
     "db:restore": "node scripts/restore.mjs",
     "accounts:link": "node scripts/link-account.mjs",
-    "test": "node --experimental-strip-types --test tests/economy.test.mjs tests/platform.test.mjs",
+    "test": "node --experimental-strip-types --test tests/economy.test.mjs tests/platform.test.mjs tests/auth.test.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

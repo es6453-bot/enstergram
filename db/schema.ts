@@ -27,6 +27,55 @@ export const authIdentities = sqliteTable(
     uniqueIndex("one_provider_per_profile").on(t.userId, t.provider),
   ],
 );
+export const authUsers = sqliteTable(
+  "auth_users",
+  {
+    id: text()
+      .primaryKey()
+      .references(() => profiles.id),
+    name: text(),
+    email: text(),
+    emailVerified: integer("email_verified"),
+    image: text(),
+  },
+  (t) => [uniqueIndex("auth_user_email").on(sql`lower(${t.email})`)],
+);
+export const playerHandles = sqliteTable(
+  "player_handles",
+  {
+    userId: text("user_id")
+      .primaryKey()
+      .references(() => profiles.id),
+    username: text().notNull(),
+    onboarded: integer().notNull().default(0),
+  },
+  (t) => [
+    uniqueIndex("unique_player_username").on(sql`lower(${t.username})`),
+    check("onboarding_state", sql`${t.onboarded} IN (0,1)`),
+  ],
+);
+export const authVerificationTokens = sqliteTable(
+  "auth_verification_tokens",
+  {
+    identifier: text().notNull(),
+    token: text().notNull(),
+    expires: integer().notNull(),
+  },
+  (t) => [uniqueIndex("unique_auth_verification").on(t.identifier, t.token)],
+);
+export const authLinkTokens = sqliteTable("auth_link_tokens", {
+  token: text().primaryKey(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => profiles.id),
+  email: text().notNull(),
+  expires: integer().notNull(),
+});
+export const authRateLimits = sqliteTable("auth_rate_limits", {
+  key: text().primaryKey(),
+  count: integer().notNull(),
+  expires: integer().notNull(),
+});
 export const settings = sqliteTable("settings", {
   id: integer().primaryKey(),
   data: text().notNull(),

@@ -53,9 +53,9 @@ Look up a numeric GitHub ID using `https://api.github.com/users/YOUR_USERNAME` a
 node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))"
 ```
 
-Enter the result directly into Vercel. Do not commit secrets or the private backup. `AUTH_URL` is optional; set it to the stable production origin only if host inference is unsuitable. Auth.js detects Vercel's trusted proxy environment automatically.
+Enter the result directly into Vercel. Do not commit secrets or the private backup. Set `AUTH_URL` to the stable production origin to support account-settings email linking. Auth.js detects Vercel's trusted proxy environment automatically.
 
-Access starts **owner-only**. Add other numeric GitHub IDs to `ALLOWED_GITHUB_IDS` to invite your group. Use `*` only when intentionally opening the game to every GitHub account. Existing sessions are checked against the current allowlist on every game API request. The first random visitor can never become admin.
+GitHub access starts **owner-only**. Google and passwordless email are optional and allow verified-player registration when configured. Follow **[AUTH-SETUP.md](AUTH-SETUP.md)** for external setup and safe linking. Guests can browse `/guest` immediately. Add other numeric GitHub IDs to `ALLOWED_GITHUB_IDS` to invite your group. Use `*` only when intentionally opening the game to every GitHub account. Existing sessions are checked against the current allowlist on every game API request. The first random visitor can never become admin.
 
 ## 5. Preserve the existing game before first sign-in
 
@@ -68,7 +68,7 @@ pnpm install --frozen-lockfile
 pnpm db:restore "ABSOLUTE_PATH_TO_PRIVATE_BACKUP.json"
 ```
 
-The restore applies all nine migrations, copies existing records transactionally, verifies wallet/ledger and follower/award totals, restores all database triggers, and links the single existing owner profile to the configured GitHub account. It does not repeat starting grants, purchase debits, follower awards or inventory consumption. A populated target is refused; the script never clears or merges data. Failed restores roll back both copied records and temporary trigger changes.
+The restore applies all ten migrations, copies existing records transactionally, verifies wallet/ledger and follower/award totals, restores all database triggers, and links the single existing owner profile to the configured GitHub account. It does not repeat starting grants, purchase debits, follower awards or inventory consumption. A populated target is refused; the script never clears or merges data. Failed restores roll back both copied records and temporary trigger changes.
 
 The backup is a bounded table export taken during preparation, not a live replication connection. Stop gameplay on the old site before the final cutover and refresh the export if anyone has played or edited content since it was taken. Preserve the old site until the new deployment and sign-in have been verified. Account identities are deliberately not matched by display name or unverified email.
 

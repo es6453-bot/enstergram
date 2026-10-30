@@ -218,10 +218,12 @@ export default function Game({ view = "shop" }: { view?: string }) {
     const key = `${view}:${currentId || ""}`;
     if (initializedComposer.current === key) return;
     initializedComposer.current = key;
-    setContent(
-      data.mine.find((entry: any) => entry.round_id === currentId)?.content ||
-        "",
-    );
+    const existing = data.mine.find((entry: any) => entry.round_id === currentId)?.content;
+    let practice = "";
+    if (view === "submit" && currentId && !existing) {
+      try { const draft = JSON.parse(localStorage.getItem("estergram-practice") || "null"); if (draft?.roundId === currentId) practice = String(draft.content).slice(0,2000); } catch {}
+    }
+    setContent(existing || practice);
   }, [data, view, currentId]);
   useEffect(() => {
     if (!roundId || !["vote", "results"].includes(view)) return;
@@ -326,12 +328,13 @@ export default function Game({ view = "shop" }: { view?: string }) {
               too seriously.
             </p>
           </div>
-          <a
+          {admin && <a
             href="/admin"
             className={view === "admin" ? "admin-link selected" : "admin-link"}
           >
             <Settings2 size={18} /> Creator studio <ArrowUpRight size={15} />
-          </a>
+          </a>}
+          <a className="admin-link" href="/account"><Settings2 size={18}/> Account settings</a>
           <div className="profile-mini">
             <div className="avatar">
               {(data?.profile.name || "Y").slice(0, 1).toUpperCase()}
@@ -405,7 +408,7 @@ export default function Game({ view = "shop" }: { view?: string }) {
             <h1>Welcome to Estergram.</h1>
             <p>{error}</p>
             <a className="primary" href="/signin" target="_top">
-              Sign in with GitHub <ArrowRight size={16} />
+              Continue to sign in <ArrowRight size={16} />
             </a>
             <button onClick={load} className="secondary">
               Try again

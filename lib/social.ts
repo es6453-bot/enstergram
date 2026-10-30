@@ -234,7 +234,7 @@ export async function unlockCosmetics(
 export async function publicProfile(db: GameDatabase, userId: string) {
   const { one, all } = access(db);
   const p = await one(
-    "SELECT id,name,followers FROM profiles WHERE id=?",
+    "SELECT p.id,p.name,p.followers,h.username FROM profiles p LEFT JOIN player_handles h ON h.user_id=p.id WHERE p.id=?",
     userId,
   );
   const style = await one(
@@ -256,6 +256,7 @@ export async function publicProfile(db: GameDatabase, userId: string) {
   );
   return {
     name: p.name,
+    username: p.username || null,
     followers: p.followers,
     appearance: {
       ...APPEARANCE_DEFAULTS,

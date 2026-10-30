@@ -3,11 +3,13 @@
 - [x] Standard Next.js production build, with no Sites manifest dependency
 - [x] Auth.js GitHub sessions, explicit owner ID and player allowlist
 - [x] Hosted libSQL adapter with atomic write transactions
-- [x] Nine checksum-tracked schema migrations and rollback tests
+- [x] Ten checksum-tracked schema migrations and rollback tests
 - [x] Private legacy-data export and restore without reward replay
-- [x] 44 automated game/platform tests and TypeScript/lint checks
+- [x] 57 automated game/platform/auth tests and TypeScript/lint checks
 - [x] Production-server HTTP checks: unauthenticated API access, forged legacy headers and cross-origin writes rejected
-- [ ] Hosted database/OAuth configuration and final Vercel deployment verification
+- [x] Vercel deployment and existing GitHub sign-in verified
+- [x] Guest preview, username onboarding and safe provider linking
+- [ ] Owner configuration of Google OAuth and Resend delivery (see AUTH-SETUP.md)
 
 See `VERCEL-SETUP.md` for the migration and cutover process. Notes below describe the original game feature implementation.
 

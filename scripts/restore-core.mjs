@@ -14,7 +14,8 @@ export async function restoreSnapshot(client, snapshot, ownerSubject) {
   );
   const targetTables = definition.rows.map((x) => x.name);
   const sourceNames = Object.keys(snapshot.tables);
-  const expected = targetTables.filter((name) => name !== "auth_identities");
+  const authTables = new Set(["auth_identities","auth_users","player_handles","auth_verification_tokens","auth_link_tokens","auth_rate_limits"]);
+  const expected = targetTables.filter((name) => !authTables.has(name));
   if (
     sourceNames.length !== expected.length ||
     !expected.every((name) => sourceNames.includes(name))
@@ -99,6 +100,8 @@ export async function restoreSnapshot(client, snapshot, ownerSubject) {
         inserts.push({ sql, args: columns.map((column) => row[column]) });
     }
     if (inserts.length) await transaction.batch(inserts);
+    await transaction.execute("INSERT INTO auth_users(id,name) SELECT id,name FROM profiles");
+    await transaction.execute("INSERT INTO player_handles SELECT id,'player_' || printf('%06d',ROW_NUMBER() OVER(ORDER BY id)),1 FROM profiles");
     await transaction.execute({
       sql: "INSERT INTO auth_identities(provider,subject,user_id,created) VALUES('github',?,?,?)",
       args: [ownerSubject, owners[0].id, Date.now()],
