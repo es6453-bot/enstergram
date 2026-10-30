@@ -1,63 +1,24 @@
-# Estergram — source code handoff
+# Start here — Estergram on Vercel
 
-This package contains the complete tracked source for the deployed Estergram game, including the shop, Likes economy, Eastern daily schedule, influencer tiers, cosmetic profiles, streaks, owner dashboard, migrations, tests, assets and supporting build scripts.
+This is the standard Next.js / GitHub OAuth / libSQL edition. It replaces the previous Sites/Vinext build for a Vercel deployment.
 
-## Open the project
+1. Read `VERCEL-SETUP.md` and prepare the database, OAuth app and Vercel environment variables.
+2. Restore the separate private migration backup into an empty database before signing in, if preserving the existing game.
+3. Publish the complete source with Git/GitHub Desktop and deploy using the Next.js preset. `vercel.json` sets the production build command.
+4. Verify `/api/health`, real GitHub sign-in, owner access and preserved game records before switching players to the new URL.
 
-1. Extract `estergram-collaboration.zip`.
-2. Open the inner `estergram` folder in your code editor.
-3. Read `README.md` for architecture, game rules and database setup.
-4. Read `COLLABORATING.md` to set up your shared repository and review workflow.
-
-## Local requirements
-
-- Node.js 24 or newer.
-- pnpm 11.25 or newer compatible with the project's pinned package-manager version.
-- Git for shared development.
-
-From the extracted project folder:
+For source checks:
 
 ```sh
 pnpm install --frozen-lockfile
-pnpm build
-```
-
-The first build generates the local Wrangler configuration. Run the eight local database migration commands in the README, once and in filename order, before starting the game:
-
-```sh
-pnpm dev
-```
-
-Open the loopback address printed by the development server. The portable local preview supplies a development sign-in identity; it is separate from production accounts and data. The first local account initializes the owner workspace and editable placeholders.
-
-## Check changes
-
-```sh
 pnpm test
 pnpm typecheck
 pnpm lint
 pnpm build
 ```
 
-The release this package was exported from passed 37 automated tests, TypeScript, lint and a production build. New profile/streak layouts have not had a browser visual review. Test the pages and mobile layouts when making UI changes.
+The source release passes 44 automated tests and a standard Next.js production build. This does not replace verification of real external credentials and the final hosted deployment.
 
-## What is included
+The source ZIP includes code, assets, tests, migrations, dependency lockfile and setup documentation. Installed dependencies, generated builds, local databases, secrets and the private live-game backup are excluded. Do not upload the private backup or `.env.local` to GitHub.
 
-- Application pages, API handlers, authentication adapter, server rules and progression systems.
-- Database schema, all eight SQL migrations and Drizzle metadata.
-- Frontend components, styles, icons and placeholder content.
-- Dependency manifest, pinned lockfile, local development/build scripts and supporting vendor notices.
-- Tests, implementation notes and setup documentation.
-- `SOURCE-MANIFEST.json` identifying the exported source commit.
-
-## What is separate
-
-Installed dependencies and generated builds are recreated from the manifest and lockfile. This package does not include local databases, production player data, sessions, access tokens, Git credentials or the repository's Git history. Current owner-edited content/settings stored in the production database are not a database backup in this archive.
-
-The production game is hosted at:
-
-https://viral-algorithm-game.mauveclock20.chatgpt.site
-
-The source archive does not grant access to that private website, its hosted database, or deployment permissions. The `.openai/hosting.json` file retains the original site's project identifier for the owner's existing project; that identifier is not a password. Keep the original identity when returning changes to that project. An independent deployment needs its own project registration and database.
-
-Production authentication relies on Sites. Hosting this code elsewhere requires adapting the authentication/deployment integration and configuring a suitable Cloudflare D1 database; it is not a static HTML-only website. See the README before choosing another host.
+Keep the previous live game available until cutover succeeds. See `README.md` for game behavior and `COLLABORATING.md` for the shared development workflow.

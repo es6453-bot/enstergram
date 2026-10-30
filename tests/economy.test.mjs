@@ -37,7 +37,8 @@ const schema =
   readFileSync("drizzle/0004_scheduled_prompt_identity.sql", "utf8") +
   readFileSync("drizzle/0005_starting_likes.sql", "utf8") +
   readFileSync("drizzle/0006_daily_eastern_schedule.sql", "utf8") +
-  readFileSync("drizzle/0007_social_profiles_streaks.sql", "utf8");
+  readFileSync("drizzle/0007_social_profiles_streaks.sql", "utf8") +
+  readFileSync("drizzle/0008_vercel_identity_links.sql", "utf8");
 class Adapter {
   constructor(raw) {
     this.raw = raw;
@@ -139,7 +140,7 @@ function submit(raw, u = "alice", r = "r") {
     .run(`${r}:${u}`, r, u, "A placeholder take.", Date.now());
 }
 before(async () => {
-  mkdirSync(".sites-runtime/tests", { recursive: true });
+  mkdirSync(".test-runtime/tests", { recursive: true });
   const options = {
     compilerOptions: {
       module: ts.ModuleKind.ESNext,
@@ -147,40 +148,49 @@ before(async () => {
     },
   };
   writeFileSync(
-    ".sites-runtime/tests/rules.mjs",
+    ".test-runtime/tests/rules.mjs",
     ts.transpileModule(readFileSync("lib/rules.ts", "utf8"), options)
       .outputText,
   );
   writeFileSync(
-    ".sites-runtime/tests/time.mjs",
+    ".test-runtime/tests/time.mjs",
     ts.transpileModule(readFileSync("lib/time.ts", "utf8"), options).outputText,
   );
-  for (const moduleName of ["progression", "social-seed", "social"]) {
+  for (const moduleName of [
+    "progression",
+    "social-seed",
+    "social",
+    "identity-policy",
+  ]) {
     const source = readFileSync(`lib/${moduleName}.ts`, "utf8").replace(
       /from\s*["']\.\/(time|progression|social-seed)["']/g,
       (_, name) => `from './${name}.mjs'`,
     );
     writeFileSync(
-      `.sites-runtime/tests/${moduleName}.mjs`,
+      `.test-runtime/tests/${moduleName}.mjs`,
       ts.transpileModule(source, options).outputText,
     );
   }
   const source = readFileSync("lib/server.ts", "utf8")
     .replace(
-      /import\s*\{\s*env\s*\}\s*from\s*['"]cloudflare:workers['"];?/,
-      "const env={get DB(){return globalThis.__testDb;}};",
+      /import\s*\{\s*database\s*\}\s*from\s*['"]\.\/database['"];?/,
+      "const database=()=>globalThis.__testDb;",
     )
     .replace(/from\s*['"]\.\/rules['"]/, "from './rules.mjs'")
     .replace(/from\s*['"]\.\/time['"]/, "from './time.mjs'")
-    .replace(/from\s*['"]\.\/social['"]/, "from './social.mjs'");
+    .replace(/from\s*['"]\.\/social['"]/, "from './social.mjs'")
+    .replace(
+      /from\s*['"]\.\/identity-policy['"]/,
+      "from './identity-policy.mjs'",
+    );
   writeFileSync(
-    ".sites-runtime/tests/server.mjs",
+    ".test-runtime/tests/server.mjs",
     ts.transpileModule(source, options).outputText,
   );
-  server = await import("../.sites-runtime/tests/server.mjs");
-  social = await import("../.sites-runtime/tests/social.mjs");
+  server = await import("../.test-runtime/tests/server.mjs");
+  social = await import("../.test-runtime/tests/social.mjs");
   ({ SOCIAL_PLACEHOLDERS: socialPlaceholders } = await import(
-    "../.sites-runtime/tests/social-seed.mjs"
+    "../.test-runtime/tests/social-seed.mjs"
   ));
   ({
     APPEARANCE_DEFAULTS,
@@ -190,18 +200,18 @@ before(async () => {
     advanceStreak,
     validateCosmetic,
     validateAppearance,
-  } = await import("../.sites-runtime/tests/progression.mjs"));
+  } = await import("../.test-runtime/tests/progression.mjs"));
   const uiSource = readFileSync("app/social-ui.tsx", "utf8").replace(
     'from "../lib/progression"',
     'from "./progression.mjs"',
   );
   writeFileSync(
-    ".sites-runtime/tests/social-ui.mjs",
+    ".test-runtime/tests/social-ui.mjs",
     ts.transpileModule(uiSource, {
       compilerOptions: { ...options.compilerOptions, jsx: ts.JsxEmit.ReactJSX },
     }).outputText,
   );
-  socialUI = await import("../.sites-runtime/tests/social-ui.mjs");
+  socialUI = await import("../.test-runtime/tests/social-ui.mjs");
 });
 function bind(raw) {
   globalThis.__testDb = new Adapter(raw);
@@ -298,7 +308,7 @@ test("purchases preserve conservation and retries cannot double spend", async ()
   assert.throws(() => raw.exec("UPDATE ledger SET amount=999"), /immutable/);
 });
 test("real concurrent database purchases cannot overdraw", async () => {
-  const path = resolve(".sites-runtime/tests/concurrency.sqlite");
+  const path = resolve(".test-runtime/tests/concurrency.sqlite");
   try {
     unlinkSync(path);
   } catch {}

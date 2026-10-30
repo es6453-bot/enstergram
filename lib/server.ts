@@ -1,5 +1,7 @@
+import type { GameStatement } from "./database";
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { env } from "cloudflare:workers";
+import { database } from "./database";
+import { isOwner } from "./identity-policy";
 import { dailyWindow, GAME_TIME_ZONE, validateDay } from "./time";
 import {
   socialState,
@@ -18,10 +20,7 @@ import {
   validateRules,
   validateItem,
 } from "./rules";
-export const db = () => {
-  if (!env.DB) throw new Error("Database is not configured.");
-  return env.DB;
-};
+export const db = () => database();
 export const stmt = (s: string, ...v: any[]) =>
   db()
     .prepare(s)
@@ -33,18 +32,29 @@ export async function one(s: string, ...v: any[]): Promise<any> {
   return stmt(s, ...v).first();
 }
 export const id = () => crypto.randomUUID();
-export async function setup(user: { userId: string; displayName: string }) {
+export async function setup(user: {
+  userId: string;
+  displayName: string;
+  githubId?: string;
+}) {
+  const owner = isOwner(user.githubId);
   await db().batch([
     stmt(
-      "INSERT OR IGNORE INTO profiles(id,name,role) SELECT ?,?,CASE WHEN NOT EXISTS(SELECT 1 FROM profiles) THEN 'admin' ELSE 'player' END",
+      "INSERT OR IGNORE INTO profiles(id,name,role) VALUES(?,?,?)",
       user.userId,
       user.displayName.split("@")[0],
+      owner ? "admin" : "player",
     ),
     stmt(
       "INSERT OR IGNORE INTO wallets(user_id,balance) VALUES(?,0)",
       user.userId,
     ),
   ]);
+  await stmt(
+    "UPDATE profiles SET role=? WHERE id=?",
+    owner ? "admin" : "player",
+    user.userId,
+  ).run();
   const profile = await one("SELECT * FROM profiles WHERE id=?", user.userId);
   if (
     profile.role === "admin" &&
@@ -216,7 +226,7 @@ export async function finalize(r: any) {
         (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
     );
   const receipts = await all("SELECT * FROM receipts WHERE round_id=?", r.id);
-  const ops: D1PreparedStatement[] = [];
+  const ops: GameStatement[] = [];
   scores.forEach((s, i) => {
     const f = followers(i + 1, scores.length, rules);
     ops.push(
@@ -575,7 +585,7 @@ export async function mutate(action: string, b: any, user: any) {
   }
   if (user.role !== "admin")
     throw new Error("Administrator access is required.");
-  const ops: D1PreparedStatement[] = [];
+  const ops: GameStatement[] = [];
   if (action === "seed") {
     await seed(u);
     return;

@@ -12,6 +12,21 @@ export const profiles = sqliteTable("profiles", {
   role: text().notNull().default("player"),
   followers: integer().notNull().default(0),
 });
+export const authIdentities = sqliteTable(
+  "auth_identities",
+  {
+    provider: text().notNull(),
+    subject: text().notNull(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => profiles.id),
+    created: integer().notNull(),
+  },
+  (t) => [
+    uniqueIndex("one_oauth_identity").on(t.provider, t.subject),
+    uniqueIndex("one_provider_per_profile").on(t.userId, t.provider),
+  ],
+);
 export const settings = sqliteTable("settings", {
   id: integer().primaryKey(),
   data: text().notNull(),

@@ -1,11 +1,12 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { getChatGPTUser } from "../../chatgpt-auth";
+import { getCurrentUser } from "../../../lib/current-user";
 import { setup, state, mutate, feed, stmt } from "../../../lib/server";
 import { currencyCopy } from "../../../lib/rules";
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 export async function GET(request: Request) {
   try {
-    const identity = await getChatGPTUser();
+    const identity = await getCurrentUser();
     if (!identity)
       return Response.json({ error: "Sign in to play." }, { status: 401 });
     const user = await setup(identity);
@@ -31,7 +32,7 @@ export async function POST(request: Request) {
         { error: "Invalid request origin." },
         { status: 403 },
       );
-    const identity = await getChatGPTUser();
+    const identity = await getCurrentUser();
     if (!identity)
       return Response.json({ error: "Sign in to play." }, { status: 401 });
     if (Number(request.headers.get("content-length") || 0) > 16000)

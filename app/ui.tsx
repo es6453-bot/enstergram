@@ -343,11 +343,7 @@ export default function Game({ view = "shop" }: { view?: string }) {
                   (admin ? "Game owner" : "Player")}
               </small>
             </div>
-            <a
-              href="/signout-with-chatgpt?return_to=/"
-              target="_top"
-              aria-label="Sign out"
-            >
+            <a href="/signout" target="_top" aria-label="Sign out">
               <LogOut size={16} />
             </a>
           </div>
@@ -408,12 +404,8 @@ export default function Game({ view = "shop" }: { view?: string }) {
             <Flame size={38} />
             <h1>Welcome to Estergram.</h1>
             <p>{error}</p>
-            <a
-              className="primary"
-              href="/signin-with-chatgpt?return_to=/shop"
-              target="_top"
-            >
-              Sign in to play <ArrowRight size={16} />
+            <a className="primary" href="/signin" target="_top">
+              Sign in with GitHub <ArrowRight size={16} />
             </a>
             <button onClick={load} className="secondary">
               Try again

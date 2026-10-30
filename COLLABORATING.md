@@ -1,32 +1,19 @@
-# Collaborating on Estergram
+# Collaborating on the Vercel edition
 
-## Create one shared source repository
+Use `es6453-bot/enstergram` or your chosen shared repository. This folder is the repository root; do not nest it underneath another `estergram` directory when importing to Vercel.
 
-One group member should extract the archive and create an empty private repository on your chosen Git hosting service. From the extracted `estergram` folder:
+Use Git or GitHub Desktop to publish the complete source. Browser drag-and-drop previously omitted hidden files and several required modules, including bracketed route folders. Do not upload `node_modules`, `.next`, `.data`, `.env.local`, credentials or private backups.
 
-```sh
-git init -b main
-git add .
-git commit -m "Import Estergram source"
-git remote add origin YOUR_SHARED_REPOSITORY_URL
-git push -u origin main
-```
-
-Replace `YOUR_SHARED_REPOSITORY_URL` with the URL supplied by your repository host. Invite the group as collaborators through that host. Everyone else should clone this shared repository, rather than independently uploading another copy of the ZIP.
-
-This is a new shared development repository. It is separate from the hosting platform's existing deployment source repository. Sharing source does not change the live site's audience or grant publication access.
-
-## Use branches and review changes
-
-Start each task from an up-to-date main branch:
+Suggested workflow:
 
 ```sh
 git switch main
 git pull --ff-only
 git switch -c feature/your-change
+pnpm install --frozen-lockfile
 ```
 
-After implementing and checking a change:
+Make changes and run:
 
 ```sh
 pnpm test
@@ -38,37 +25,12 @@ git commit -m "Describe the change"
 git push -u origin feature/your-change
 ```
 
-Open a pull request or merge request on your Git host. Have another group member review it before merging. Agree on who publishes approved changes to the existing live Site; pushing to this new collaboration repository does not automatically deploy it.
+Open a pull request and have another group member review it. Production uses the stable Vercel project/domain. Use separate database and OAuth settings for previews so a preview cannot modify production game records.
 
-## Code map
+Keep applied migrations immutable; generate new schema changes with `pnpm db:generate` and coordinate migration numbering. Both SQL and Drizzle metadata belong in Git. The deployed build runs migrations through a checksum-tracked transaction runner.
 
-| Area | Main files |
-| --- | --- |
-| Shop, submissions, voting, results, owner dashboard | `app/ui.tsx` |
-| Profile cards, wardrobe and profile/streak editors | `app/social-ui.tsx` |
-| Layout and styles | `app/layout.tsx`, `app/globals.css`, `app/social.css` |
-| Authenticated API | `app/api/game/route.ts`, `app/chatgpt-auth.ts` |
-| Competition, purchases, inventory and finalization | `lib/server.ts`, `lib/rules.ts` |
-| Tiers, cosmetics, streaks and validations | `lib/social.ts`, `lib/progression.ts` |
-| Editable placeholder seed content | `lib/social-seed.ts` |
-| Eastern-time scheduling | `lib/time.ts` |
-| Database | `db/schema.ts`, `drizzle/` |
-| Integration, concurrency and rendering tests | `tests/economy.test.mjs` |
-| Toolchain | `package.json`, `pnpm-lock.yaml`, `vite.config.ts`, `scripts/` |
+Keep anonymous voting projections, server-side authorization, immutable accounting, deterministic scoring and America/New_York calendar rules intact. UI-only role fields and incoming identity headers are never trusted. Cosmetics and streaks must not change voting permissions or competitive scoring.
 
-## Shared working agreements
+Content and economy edits belong in Creator studio. Configuration stored in a hosted database is not automatically included in source exports. Use the private backup/restore workflow for a migration rather than re-creating balances with new grants.
 
-- Use Creator studio for the owner's prompt, economy, tier and cosmetic content changes. Production edits live in the database, not in frontend constants.
-- Commit source, the lockfile, migrations and Drizzle metadata. The included `.gitignore` excludes dependencies, local databases, build outputs and local secrets.
-- Keep applied migrations immutable. Add a new migration for subsequent schema changes, and coordinate migration generation to avoid conflicting sequence numbers.
-- Use separate local databases. Do not pass production player data or development cookies around with the code.
-- Preserve anonymous voting projections, server-side authorization and the immutable ledger/results rules.
-- Keep economy settings and competitive effects snapshotted for published rounds. Cosmetic/streak work must not silently change scoring or previously earned rewards.
-- Use America/New_York calendar dates for schedule and streak changes; test both daylight saving transitions.
-- Run the checks above before merging. Test edited user flows in the browser at desktop and mobile sizes.
-
-## Releasing to the existing Site
-
-The designated owner/publisher should bring the reviewed changes into the existing Sites-managed project, run its checks/build, synchronize the source and publish through the Sites workflow. Preserve the existing `.openai/hosting.json` project ID and intended audience. Sites applies hosted migrations to the production database; local migrations and local test data are separate.
-
-For an independent fork, register a separate Site and use its returned identity and database bindings. Do not reuse the original project ID for a different hosted project. The original owner retains control of the existing live game.
+See `VERCEL-SETUP.md` for service setup, environment variables, data preservation, owner mapping and release checks. Source access, website access and Vercel deployment access are separate permissions.
