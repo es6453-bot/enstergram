@@ -1,7 +1,13 @@
 import type { GameStatement } from "./database";
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { database } from "./database";
-import { isOwner } from "./identity-policy";
+import {
+  roleFor,
+  isStaff,
+  requireStaff,
+  requireActive,
+  moderatePlayer,
+} from "./access";
 import { dailyWindow, GAME_TIME_ZONE, validateDay } from "./time";
 import {
   socialState,
@@ -37,27 +43,23 @@ export async function setup(user: {
   displayName: string;
   githubId?: string;
 }) {
-  const owner = isOwner(user.githubId);
+  await requireActive(db(), user.userId);
   await db().batch([
     stmt(
       "INSERT OR IGNORE INTO profiles(id,name,role) VALUES(?,?,?)",
       user.userId,
       user.displayName.split("@")[0],
-      owner ? "admin" : "player",
+      "player",
     ),
     stmt(
       "INSERT OR IGNORE INTO wallets(user_id,balance) VALUES(?,0)",
       user.userId,
     ),
   ]);
-  await stmt(
-    "UPDATE profiles SET role=? WHERE id=?",
-    owner ? "admin" : "player",
-    user.userId,
-  ).run();
   const profile = await one("SELECT * FROM profiles WHERE id=?", user.userId);
+  profile.role = await roleFor(db(), user.userId);
   if (
-    profile.role === "admin" &&
+    profile.role === "owner" &&
     !(await one("SELECT id FROM settings WHERE id=1"))
   )
     await seed(user.userId);
@@ -325,7 +327,10 @@ export async function finalize(r: any) {
   );
   await db().batch(ops);
 }
-export async function state(userId: string, admin: boolean) {
+export async function state(userId: string) {
+  await requireActive(db(), userId);
+  const role = await roleFor(db(), userId),
+    admin = isStaff(role);
   const rounds = await all("SELECT * FROM rounds ORDER BY opens DESC");
   for (const r of rounds) await finalize(r);
   const rs = await all("SELECT * FROM rounds ORDER BY opens DESC");
@@ -346,7 +351,10 @@ export async function state(userId: string, admin: boolean) {
     serverNow,
     timeZone: GAME_TIME_ZONE,
     social: await socialState(db(), userId, admin),
-    profile: await one("SELECT * FROM profiles WHERE id=?", userId),
+    profile: {
+      ...(await one("SELECT * FROM profiles WHERE id=?", userId)),
+      role,
+    },
     wallet: await one("SELECT balance FROM wallets WHERE user_id=?", userId),
     catalog,
     inventory,
@@ -372,15 +380,27 @@ export async function state(userId: string, admin: boolean) {
           "SELECT i.user_id,i.item_id,i.quantity,c.name FROM inventory i JOIN catalog c ON c.id=i.item_id",
         )
       : [],
-    players: admin ? await all("SELECT id,name,role FROM profiles") : [],
+    players: admin
+      ? await all(
+          "SELECT p.id,p.name,COALESCE(s.role,'player') AS role FROM profiles p LEFT JOIN staff_roles s ON s.user_id=p.id",
+        )
+      : [],
+    moderation: admin
+      ? await all(
+          "SELECT s.user_id,s.reason,s.created,p.name FROM player_suspensions s JOIN profiles p ON p.id=s.user_id ORDER BY s.created DESC",
+        )
+      : [],
     audit: admin
       ? await all(
-          "SELECT action,payload,created FROM audit ORDER BY created DESC LIMIT 30",
+          role === "owner"
+            ? "SELECT action,payload,created FROM audit ORDER BY created DESC LIMIT 30"
+            : "SELECT action,payload,created FROM audit WHERE action NOT LIKE 'admin_%' AND action<>'owner_bootstrap' ORDER BY created DESC LIMIT 30",
         )
       : [],
   };
 }
 export async function feed(roundId: string, userId: string) {
+  await requireActive(db(), userId);
   const r = await one("SELECT * FROM rounds WHERE id=?", roundId);
   if (!r) throw new Error("Round not found.");
   if (phase(r) === "RESULTS") {
@@ -435,6 +455,7 @@ export async function feed(roundId: string, userId: string) {
 export async function mutate(action: string, b: any, user: any) {
   const u = user.id,
     now = Date.now();
+  await requireActive(db(), u);
   if (action === "refresh") {
     return;
   }
@@ -583,8 +604,13 @@ export async function mutate(action: string, b: any, user: any) {
     ]);
     return;
   }
-  if (user.role !== "admin")
-    throw new Error("Administrator access is required.");
+  await requireStaff(db(), u);
+  if (action === "moderatePlayer") {
+    if (typeof b.suspended !== "boolean")
+      throw new Error("Choose suspend or reinstate.");
+    await moderatePlayer(db(), u, b.userId, b.suspended, b.reason);
+    return;
+  }
   const ops: GameStatement[] = [];
   if (action === "seed") {
     await seed(u);

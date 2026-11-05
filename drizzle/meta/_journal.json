@@ -71,6 +71,13 @@
       "when": 1793353090505,
       "tag": "0009_frictionless_auth",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1793853032868,
+      "tag": "0010_staff_roles",
+      "breakpoints": true
     }
   ]
 }

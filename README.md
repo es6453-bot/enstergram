@@ -4,6 +4,8 @@ A daily anonymous writing game with a Likes shop, consumable power-ups, follower
 
 This edition uses **Next.js 16, React 19, Auth.js and hosted libSQL**. Google, passwordless email and GitHub share the existing player database. Public guest browsing and practice require no account. See **[AUTH-SETUP.md](AUTH-SETUP.md)** to enable Google/email; their controls remain unavailable until configured. It runs on Vercel's Node.js runtime. It does not depend on Vinext, Cloudflare Worker bindings, Sites identity headers or `.openai/hosting.json`.
 
+See [ADMIN-ACCESS.md](ADMIN-ACCESS.md) for Owner/Admin roles, verified account IDs, administrator management and server-side access controls.
+
 ## Deploy
 
 Follow **[VERCEL-SETUP.md](VERCEL-SETUP.md)**. The production deployment needs a remote libSQL database, GitHub OAuth credentials, a session secret and the owner's numeric GitHub ID. The build validates configuration and applies checksum-tracked migrations. Without those service credentials, this is a tested source release, not a working hosted game.
@@ -36,7 +38,7 @@ pnpm lint
 pnpm build
 ```
 
-The suite contains 58 tests covering game rules, anonymous voting privacy, tiers, profiles, streaks, DST, currency conservation, concurrent purchases, transactional libSQL batches, migration rollback, explicit owner access and data restore integrity. Identity linking, concurrent usernames, one-use email tokens and guest privacy are covered too, including a real Auth.js magic-link flow with simulated delivery. Real OAuth and production email delivery require configured services and deployment checks.
+The suite contains 68 tests covering game rules, anonymous voting privacy, tiers, profiles, streaks, DST, currency conservation, concurrent purchases, transactional libSQL batches, migration rollback, explicit owner access and data restore integrity. Identity linking, concurrent usernames, one-use email tokens and guest privacy are covered too, including a real Auth.js magic-link flow with simulated delivery. Real OAuth and production email delivery require configured services and deployment checks.
 
 ## Player and owner pages
 

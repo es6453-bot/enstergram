@@ -6,6 +6,7 @@ import { decode } from "next-auth/jwt";
 import { database } from "./lib/database";
 import { authStore, normalizeEmail, limitAuthRequest } from "./lib/auth-store";
 import { githubSubject, isAllowedPlayer } from "./lib/identity-policy";
+import { recordGoogleLogin, bootstrapOwner } from "./lib/access";
 import {
   emailReady,
   googleReady,
@@ -119,8 +120,22 @@ export const { handlers, auth, signIn, signOut } = NextAuth((request) => {
         }
         return false;
       },
-      async jwt({ token, user }) {
+      async jwt({ token, user, account, profile }) {
         if (user?.id) {
+          if (
+            account?.provider === "google" &&
+            profile?.email_verified === true &&
+            typeof profile.email === "string"
+          ) {
+            await recordGoogleLogin(
+              database(),
+              user.id,
+              account.providerAccountId,
+              profile.email,
+            );
+            if (process.env.OWNER_GITHUB_ID)
+              await bootstrapOwner(database(), process.env.OWNER_GITHUB_ID);
+          }
           token.playerId = user.id;
           token.sub = user.id;
           delete token.githubId;
@@ -135,7 +150,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth((request) => {
     },
     logger: {
       error(error) {
-        console.error("Sign-in failed:", "type" in error ? error.type : error.name);
+        console.error(
+          "Sign-in failed:",
+          "type" in error ? error.type : error.name,
+        );
       },
       warn(code) {
         console.warn("Auth:", code);

@@ -3217,3 +3217,9 @@ blockquote {
     padding: 30px 18px 60px;
   }
 }
+
+.access-management .auth-error { padding: 14px; border: 1px solid #d7748b55; border-radius: 10px; color: #ffc7d6; }
+.access-management .auth-success { padding: 14px; border: 1px solid #8dbd7955; border-radius: 10px; color: #c4e6b4; }
+.access-management .admin-row { flex-wrap: wrap; gap: 16px; align-items: flex-start; }
+.access-management code { overflow-wrap: anywhere; word-break: break-word; }
+.access-management form + form { border-top: 1px solid var(--line); padding-top: 20px; margin-top: 24px; }

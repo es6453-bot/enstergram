@@ -68,7 +68,7 @@ pnpm install --frozen-lockfile
 pnpm db:restore "ABSOLUTE_PATH_TO_PRIVATE_BACKUP.json"
 ```
 
-The restore applies all ten migrations, copies existing records transactionally, verifies wallet/ledger and follower/award totals, restores all database triggers, and links the single existing owner profile to the configured GitHub account. It does not repeat starting grants, purchase debits, follower awards or inventory consumption. A populated target is refused; the script never clears or merges data. Failed restores roll back both copied records and temporary trigger changes.
+The restore applies all eleven migrations, copies existing records transactionally, verifies wallet/ledger and follower/award totals, restores all database triggers, and links the single existing owner profile to the configured GitHub account. It does not repeat starting grants, purchase debits, follower awards or inventory consumption. A populated target is refused; the script never clears or merges data. Failed restores roll back both copied records and temporary trigger changes.
 
 The backup is a bounded table export taken during preparation, not a live replication connection. Stop gameplay on the old site before the final cutover and refresh the export if anyone has played or edited content since it was taken. Preserve the old site until the new deployment and sign-in have been verified. Account identities are deliberately not matched by display name or unverified email.
 

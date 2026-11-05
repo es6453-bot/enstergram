@@ -218,10 +218,18 @@ export default function Game({ view = "shop" }: { view?: string }) {
     const key = `${view}:${currentId || ""}`;
     if (initializedComposer.current === key) return;
     initializedComposer.current = key;
-    const existing = data.mine.find((entry: any) => entry.round_id === currentId)?.content;
+    const existing = data.mine.find(
+      (entry: any) => entry.round_id === currentId,
+    )?.content;
     let practice = "";
     if (view === "submit" && currentId && !existing) {
-      try { const draft = JSON.parse(localStorage.getItem("estergram-practice") || "null"); if (draft?.roundId === currentId) practice = String(draft.content).slice(0,2000); } catch {}
+      try {
+        const draft = JSON.parse(
+          localStorage.getItem("estergram-practice") || "null",
+        );
+        if (draft?.roundId === currentId)
+          practice = String(draft.content).slice(0, 2000);
+      } catch {}
     }
     setContent(existing || practice);
   }, [data, view, currentId]);
@@ -246,7 +254,7 @@ export default function Game({ view = "shop" }: { view?: string }) {
   const balance = data?.wallet?.balance || 0,
     stock = (id: string) =>
       data?.inventory.find((x: any) => x.item_id === id)?.quantity || 0,
-    admin = data?.profile?.role === "admin",
+    admin = ["owner", "admin"].includes(data?.profile?.role),
     owned =
       data?.inventory.reduce((s: number, x: any) => s + x.quantity, 0) || 0;
   const activeEffect = data?.active.find(
@@ -328,13 +336,24 @@ export default function Game({ view = "shop" }: { view?: string }) {
               too seriously.
             </p>
           </div>
-          {admin && <a
-            href="/admin"
-            className={view === "admin" ? "admin-link selected" : "admin-link"}
-          >
-            <Settings2 size={18} /> Creator studio <ArrowUpRight size={15} />
-          </a>}
-          <a className="admin-link" href="/account"><Settings2 size={18}/> Account settings</a>
+          {admin && (
+            <a
+              href="/admin"
+              className={
+                view === "admin" ? "admin-link selected" : "admin-link"
+              }
+            >
+              <Settings2 size={18} /> Creator studio <ArrowUpRight size={15} />
+            </a>
+          )}
+          {data?.profile?.role === "owner" && (
+            <a className="admin-link" href="/admin/access">
+              <Shield size={18} /> Administrator access
+            </a>
+          )}
+          <a className="admin-link" href="/account">
+            <Settings2 size={18} /> Account settings
+          </a>
           <div className="profile-mini">
             <div className="avatar">
               {(data?.profile.name || "Y").slice(0, 1).toUpperCase()}
@@ -343,7 +362,11 @@ export default function Game({ view = "shop" }: { view?: string }) {
               <b>{data?.profile.name || "Your account"}</b>
               <small>
                 {data?.social?.profile.tier.current?.name ||
-                  (admin ? "Game owner" : "Player")}
+                  (data?.profile?.role === "owner"
+                    ? "Game owner"
+                    : admin
+                      ? "Administrator"
+                      : "Player")}
               </small>
             </div>
             <a href="/signout" target="_top" aria-label="Sign out">
@@ -1441,12 +1464,12 @@ function Admin({
     [delta, setDelta] = useState(1),
     [amount, setAmount] = useState(100),
     [note, setNote] = useState("");
-  if (data.profile.role !== "admin")
+  if (!["owner", "admin"].includes(data.profile.role))
     return (
       <main className="game-main">
         <Empty
           icon={LockKeyhole}
-          title="Creator studio is owner-only."
+          title="Creator studio requires staff access."
           text="Your player account does not have administrator access."
         />
       </main>
@@ -1463,15 +1486,23 @@ function Admin({
   );
   return (
     <main className="admin-main">
-      <div className="eyebrow">OWNER WORKSPACE</div>
+      <div className="eyebrow">
+        {data.profile.role === "owner" ? "OWNER WORKSPACE" : "ADMIN WORKSPACE"}
+      </div>
       <div className="admin-title">
         <div>
           <h1>Creator studio.</h1>
           <p>Your game. Your rules. No source code required.</p>
         </div>
         <span className="owner-badge">
-          <LockKeyhole size={14} /> ADMIN ACCESS
+          <LockKeyhole size={14} />{" "}
+          {data.profile.role === "owner" ? "OWNER ACCESS" : "ADMIN ACCESS"}
         </span>
+        {data.profile.role === "owner" && (
+          <a className="secondary" href="/admin/access">
+            <Shield size={16} /> Manage administrators
+          </a>
+        )}
       </div>
       <div className="info-bar">
         <Info size={18} />
@@ -1486,6 +1517,7 @@ function Admin({
           "inventory",
           "profiles",
           "rounds",
+          "moderation",
           "audit",
         ].map((t) => (
           <button
@@ -1497,7 +1529,9 @@ function Admin({
           </button>
         ))}
       </div>
-      {tab === "prompts" ? (
+      {tab === "moderation" ? (
+        <Moderation data={data} busy={busy} act={act} />
+      ) : tab === "prompts" ? (
         <>
           <div className="section-heading">
             <div>
@@ -1957,6 +1991,86 @@ function Admin({
         </>
       )}
     </main>
+  );
+}
+function Moderation({ data, busy, act }: any) {
+  const players = data.players.filter((p: any) => p.role === "player");
+  const [userId, setUserId] = useState(players[0]?.id || ""),
+    [reason, setReason] = useState("");
+  const suspension = data.moderation.find((s: any) => s.user_id === userId);
+  return (
+    <section className="panel editor-form">
+      <h2>Player moderation.</h2>
+      <p>
+        Pause or restore an ordinary player’s official participation. Existing
+        responses, votes, scores, followers and inventory are preserved. Staff
+        accounts are protected.
+      </p>
+      <form
+        onSubmit={async (e) => {
+          e.preventDefault();
+          if (
+            await act(
+              {
+                action: "moderatePlayer",
+                userId,
+                suspended: !suspension,
+                reason,
+              },
+              suspension
+                ? "Player reinstated."
+                : "Player participation suspended.",
+            )
+          )
+            setReason("");
+        }}
+      >
+        <label className="form-label">
+          Player
+          <select
+            value={userId}
+            onChange={(e) => setUserId(e.target.value)}
+            required
+          >
+            <option value="">Choose a player</option>
+            {players.map((p: any) => (
+              <option value={p.id} key={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        {suspension && (
+          <p className="info-bar">Currently suspended: {suspension.reason}</p>
+        )}
+        <label className="form-label">
+          Audit reason
+          <textarea
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            required
+            maxLength={500}
+          />
+        </label>
+        <button
+          className="primary"
+          disabled={busy || !userId || !reason.trim()}
+        >
+          {suspension ? "Reinstate player" : "Suspend participation"}
+        </button>
+      </form>
+      <h3>Current suspensions</h3>
+      {data.moderation.length === 0 ? (
+        <p className="muted">No suspended players.</p>
+      ) : (
+        data.moderation.map((s: any) => (
+          <div className="admin-row" key={s.user_id}>
+            <strong>{s.name}</strong>
+            <p>{s.reason}</p>
+          </div>
+        ))
+      )}
+    </section>
   );
 }
 function ItemEditor({ item, busy, close, save }: any) {

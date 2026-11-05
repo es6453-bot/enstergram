@@ -1,4 +1,5 @@
 import type { GameDatabase, GameStatement } from "./database";
+import { requireStaff, requireActive } from "./access";
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { easternDay, nextDay } from "./time";
 import { SOCIAL_PLACEHOLDERS } from "./social-seed";
@@ -356,6 +357,7 @@ export async function socialMutation(
   const { stmt, all, one } = access(db),
     u = user.id,
     now = Date.now();
+  await requireActive(db, u);
   if (action === "saveProfile") {
     await ensureSocialProfile(db, u);
     const appearance = validateAppearance(b.appearance),
@@ -462,8 +464,7 @@ export async function socialMutation(
     ].includes(action)
   )
     return false;
-  if (user.role !== "admin")
-    throw new Error("Administrator access is required.");
+  await requireStaff(db, user.id);
   await initializeSocial(db);
   const ops: GameStatement[] = [];
   if (action === "socialSettings") {

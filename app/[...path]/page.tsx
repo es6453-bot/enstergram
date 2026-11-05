@@ -11,6 +11,7 @@ export default async function Page({
   const user = await getCurrentUser();
   if (!user) redirect("/signin");
   if (!user.onboarded) redirect("/onboarding");
+  if(path[0] === "admin" && user.role !== "owner" && user.role !== "admin") redirect("/submit");
   return (
     <Game
       view={

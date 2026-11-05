@@ -23,6 +23,7 @@ before(async () => {
     "social-seed",
     "social",
     "identity-policy",
+    "access",
     "server",
   ]) {
     let code = readFileSync(`lib/${name}.ts`, "utf8")
@@ -31,7 +32,7 @@ before(async () => {
         "const database=()=>globalThis.__platformDb;",
       )
       .replace(
-        /from\s*["']\.\/(rules|time|progression|social-seed|social|identity-policy)["']/g,
+        /from\s*["']\.\/(rules|time|progression|social-seed|social|identity-policy|access)["']/g,
         (_, moduleName) => `from './${moduleName}.mjs'`,
       );
     writeFileSync(
@@ -58,7 +59,7 @@ test("libSQL applies all migrations once and exposes fractional server timestamp
     assert.equal(
       (await client.execute("SELECT COUNT(*) AS n FROM _app_migrations"))
         .rows[0].n,
-      10,
+      11,
     );
     assert.equal((await migrate(client)).applied, 0);
     const r = await client.execute("SELECT unixepoch('subsec') AS now");
@@ -173,11 +174,31 @@ test("server setup uses explicit GitHub owner configuration and never grants fir
       githubId: "123",
       displayName: "Owner",
     });
-    assert.equal(owner.role, "admin");
+    assert.equal(owner.role, "player");
+    await client.batch(
+      [
+        "INSERT INTO auth_identities VALUES('github','123','github:123',1)",
+        "INSERT INTO auth_identities VALUES('google','google-owner','github:123',1)",
+        "INSERT INTO google_accounts VALUES('google-owner','github:123','owner@example.com',1)",
+      ],
+      "write",
+    );
+    const { bootstrapOwner } = await import("../lib/access.ts");
+    await bootstrapOwner(adaptClient(client), "123");
+    assert.equal(
+      (
+        await server.setup({
+          userId: "github:123",
+          githubId: "123",
+          displayName: "Owner",
+        })
+      ).role,
+      "owner",
+    );
     assert.equal(
       (
         await client.execute(
-          "SELECT COUNT(*) AS n FROM profiles WHERE role='admin'",
+          "SELECT COUNT(*) AS n FROM staff_roles WHERE role='owner'",
         )
       ).rows[0].n,
       1,
@@ -209,7 +230,7 @@ test("server setup uses explicit GitHub owner configuration and never grants fir
       githubId: "123",
       displayName: "Former owner",
     });
-    assert.equal(retired.role, "player");
+    assert.equal(retired.role, "owner");
   } finally {
     if (previous === undefined) delete process.env.OWNER_GITHUB_ID;
     else process.env.OWNER_GITHUB_ID = previous;
@@ -236,7 +257,7 @@ test("GitHub access defaults to owner-only and uses stable numeric verified subj
 async function snapshotOf(client) {
   const names = (
     await client.execute(
-      "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT IN ('_app_migrations','auth_identities','auth_users','player_handles','auth_verification_tokens','auth_link_tokens','auth_rate_limits')",
+      "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT IN ('_app_migrations','auth_identities','auth_users','player_handles','auth_verification_tokens','auth_link_tokens','auth_rate_limits','google_accounts','staff_roles','admin_invitations','player_suspensions')",
     )
   ).rows.map((x) => x.name);
   const tables = {};
@@ -267,6 +288,7 @@ test("data restore preserves accounting, existing owner identity and immutable t
       githubId: "123",
       displayName: "Existing owner",
     });
+    await source.execute("UPDATE profiles SET role='admin'"); // Original Sites backup marks the legacy owner as admin.
     const snapshot = await snapshotOf(source);
     target = createClient({ url: "file::memory:" });
     await migrate(target);
@@ -318,6 +340,7 @@ test("inconsistent backup restores roll back all copied data and restore target 
       githubId: "123",
       displayName: "Owner",
     });
+    await source.execute("UPDATE profiles SET role='admin'"); // Legacy Sites owner marker.
     const snapshot = await snapshotOf(source);
     snapshot.tables.wallets.rows[0].balance = 999;
     target = createClient({ url: "file::memory:" });

@@ -76,6 +76,75 @@ export const authRateLimits = sqliteTable("auth_rate_limits", {
   count: integer().notNull(),
   expires: integer().notNull(),
 });
+export const googleAccounts = sqliteTable(
+  "google_accounts",
+  {
+    subject: text().primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => profiles.id),
+    email: text().notNull(),
+    verifiedAt: integer("verified_at").notNull(),
+  },
+  (t) => [
+    uniqueIndex("one_google_account_per_player").on(t.userId),
+    uniqueIndex("google_verified_email").on(sql`lower(${t.email})`),
+  ],
+);
+export const staffRoles = sqliteTable(
+  "staff_roles",
+  {
+    userId: text("user_id")
+      .primaryKey()
+      .references(() => profiles.id),
+    role: text().notNull(),
+    googleSubject: text("google_subject")
+      .notNull()
+      .references(() => googleAccounts.subject),
+    grantedBy: text("granted_by")
+      .notNull()
+      .references(() => profiles.id),
+    created: integer().notNull(),
+  },
+  (t) => [
+    uniqueIndex("one_role_per_google_account").on(t.googleSubject),
+    check("staff_role_type", sql`${t.role} IN ('owner','admin')`),
+  ],
+);
+export const adminInvitations = sqliteTable(
+  "admin_invitations",
+  {
+    id: text().primaryKey(),
+    email: text().notNull(),
+    createdBy: text("created_by")
+      .notNull()
+      .references(() => profiles.id),
+    created: integer().notNull(),
+    status: text().notNull().default("pending"),
+    acceptedUser: text("accepted_user").references(() => profiles.id),
+    acceptedSubject: text("accepted_subject"),
+    resolved: integer(),
+  },
+  (t) => [
+    uniqueIndex("one_pending_admin_invitation")
+      .on(sql`lower(${t.email})`)
+      .where(sql`${t.status}='pending'`),
+    check(
+      "invitation_status",
+      sql`${t.status} IN ('pending','accepted','cancelled')`,
+    ),
+  ],
+);
+export const playerSuspensions = sqliteTable("player_suspensions", {
+  userId: text("user_id")
+    .primaryKey()
+    .references(() => profiles.id),
+  reason: text().notNull(),
+  actor: text()
+    .notNull()
+    .references(() => profiles.id),
+  created: integer().notNull(),
+});
 export const settings = sqliteTable("settings", {
   id: integer().primaryKey(),
   data: text().notNull(),

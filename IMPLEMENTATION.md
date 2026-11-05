@@ -3,9 +3,9 @@
 - [x] Standard Next.js production build, with no Sites manifest dependency
 - [x] Auth.js GitHub sessions, explicit owner ID and player allowlist
 - [x] Hosted libSQL adapter with atomic write transactions
-- [x] Ten checksum-tracked schema migrations and rollback tests
+- [x] Eleven checksum-tracked schema migrations and rollback tests
 - [x] Private legacy-data export and restore without reward replay
-- [x] 58 automated game/platform/auth tests and TypeScript/lint checks
+- [x] 68 automated game/platform/auth tests and TypeScript/lint checks
 - [x] Production-server HTTP checks: unauthenticated API access, forged legacy headers and cross-origin writes rejected
 - [x] Vercel deployment and existing GitHub sign-in verified
 - [x] Guest preview, username onboarding and safe provider linking

@@ -2,6 +2,7 @@
 import { getCurrentUser } from "../../../lib/current-user";
 import { setup, state, mutate, feed, stmt } from "../../../lib/server";
 import { currencyCopy } from "../../../lib/rules";
+import { AccessError } from "../../../lib/access";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 export async function GET(request: Request) {
@@ -19,10 +20,12 @@ export async function GET(request: Request) {
     return Response.json(
       url.searchParams.has("round")
         ? await feed(url.searchParams.get("round")!, user.id)
-        : await state(user.id, user.role === "admin"),
+        : await state(user.id),
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch (e) {
+    if (e instanceof AccessError)
+      return Response.json({ error: e.message }, { status: 403 });
     return Response.json(
       { error: e instanceof Error ? e.message : "Unable to load game." },
       { status: 500 },
@@ -58,6 +61,8 @@ export async function POST(request: Request) {
     await mutate(b.action, b, user);
     return Response.json({ ok: true });
   } catch (e) {
+    if (e instanceof AccessError)
+      return Response.json({ error: e.message }, { status: 403 });
     const message = currencyCopy(
       e instanceof Error ? e.message : "Request failed.",
     );

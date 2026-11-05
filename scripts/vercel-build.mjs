@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { createClient } from "@libsql/client";
 import { migrate } from "./migrations.mjs";
+import { ensureOwner } from "./bootstrap-owner.mjs";
 import { databaseOptions, loadLocalEnvironment } from "./environment.mjs";
 loadLocalEnvironment();
 const required = [
@@ -26,6 +27,7 @@ if (
 const client = createClient(databaseOptions());
 try {
   const result = await migrate(client);
+  await ensureOwner(client,process.env.OWNER_GITHUB_ID);
   console.log(`Database ready: ${result.total} migrations verified.`);
 } finally {
   client.close();

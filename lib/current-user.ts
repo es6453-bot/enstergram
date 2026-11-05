@@ -1,7 +1,8 @@
 import "server-only";
 import { auth } from "../auth";
 import { database } from "./database";
-import { isOwner, isAllowedPlayer } from "./identity-policy";
+import { isAllowedPlayer } from "./identity-policy";
+import { roleFor } from "./access";
 export async function getCurrentUser() {
   const session = await auth();
   const userId = session?.user?.id;
@@ -29,12 +30,14 @@ export async function getCurrentUser() {
     identities.some((i) => i.provider === "google") ||
     !!account?.email_verified;
   if (!permanent && (!github || !isAllowedPlayer(github))) return null;
+  const role = await roleFor(db, userId);
   return {
     userId,
     githubId: github,
     displayName: profile.name,
     username: profile.username,
     onboarded: !!profile.onboarded,
-    isOwner: isOwner(github),
+    role,
+    isOwner: role === "owner",
   };
 }

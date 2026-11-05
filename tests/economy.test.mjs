@@ -39,7 +39,8 @@ const schema =
   readFileSync("drizzle/0006_daily_eastern_schedule.sql", "utf8") +
   readFileSync("drizzle/0007_social_profiles_streaks.sql", "utf8") +
   readFileSync("drizzle/0008_vercel_identity_links.sql", "utf8") +
-  readFileSync("drizzle/0009_frictionless_auth.sql", "utf8");
+  readFileSync("drizzle/0009_frictionless_auth.sql", "utf8") +
+  readFileSync("drizzle/0010_staff_roles.sql", "utf8");
 class Adapter {
   constructor(raw) {
     this.raw = raw;
@@ -94,6 +95,7 @@ function fresh(path = ":memory:") {
       .run(u, u, u === "owner" ? "admin" : "player");
     raw.prepare("INSERT INTO wallets VALUES(?,0)").run(u);
   }
+  raw.exec("INSERT INTO auth_identities VALUES('google','google-owner','owner',1); INSERT INTO google_accounts VALUES('google-owner','owner','owner@example.com',1); INSERT INTO staff_roles VALUES('owner','owner','google-owner','owner',1);");
   raw
     .prepare("INSERT INTO settings VALUES(1,?,1)")
     .run(JSON.stringify(DEFAULTS));
@@ -162,9 +164,10 @@ before(async () => {
     "social-seed",
     "social",
     "identity-policy",
+    "access",
   ]) {
     const source = readFileSync(`lib/${moduleName}.ts`, "utf8").replace(
-      /from\s*["']\.\/(time|progression|social-seed)["']/g,
+      /from\s*["']\.\/(time|progression|social-seed|access)["']/g,
       (_, name) => `from './${name}.mjs'`,
     );
     writeFileSync(
@@ -173,6 +176,7 @@ before(async () => {
     );
   }
   const source = readFileSync("lib/server.ts", "utf8")
+    .replace(/from\s*['"]\.\/access['"]/, "from './access.mjs'")
     .replace(
       /import\s*\{\s*database\s*\}\s*from\s*['"]\.\/database['"];?/,
       "const database=()=>globalThis.__testDb;",
