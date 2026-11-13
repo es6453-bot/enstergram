@@ -2,6 +2,7 @@ import {
   sqliteTable,
   text,
   integer,
+  blob,
   uniqueIndex,
   check,
 } from "drizzle-orm/sqlite-core";
@@ -194,6 +195,20 @@ export const submissions = sqliteTable(
     updated: integer().notNull(),
   },
   (t) => [uniqueIndex("one_entry").on(t.roundId, t.userId)],
+);
+export const submissionMedia = sqliteTable(
+  "submission_media",
+  {
+    submissionId: text("submission_id")
+      .primaryKey()
+      .references(() => submissions.id),
+    mime: text().notNull(),
+    image: blob({ mode: "buffer" }).notNull(),
+  },
+  (t) => [
+    check("submission_media_mime", sql`${t.mime} IN ('image/gif','image/webp')`),
+    check("submission_media_size", sql`length(${t.image}) BETWEEN 1 AND 2097152`),
+  ],
 );
 export const ballots = sqliteTable(
   "ballots",

@@ -15,7 +15,9 @@ export async function restoreSnapshot(client, snapshot, ownerSubject) {
   const targetTables = definition.rows.map((x) => x.name);
   const sourceNames = Object.keys(snapshot.tables);
   const authTables = new Set(["auth_identities","auth_users","player_handles","auth_verification_tokens","auth_link_tokens","auth_rate_limits","google_accounts","staff_roles","admin_invitations","player_suspensions"]);
-  const expected = targetTables.filter((name) => !authTables.has(name));
+  const expected = targetTables.filter(
+    (name) => !authTables.has(name) && name !== "submission_media",
+  );
   if (
     sourceNames.length !== expected.length ||
     !expected.every((name) => sourceNames.includes(name))
@@ -100,6 +102,10 @@ export async function restoreSnapshot(client, snapshot, ownerSubject) {
         inserts.push({ sql, args: columns.map((column) => row[column]) });
     }
     if (inserts.length) await transaction.batch(inserts);
+    await transaction.execute(
+      `INSERT OR IGNORE INTO catalog(id,name,description,icon,cost,effect,parameter,placeholder)
+       VALUES('gif-response','GIF Response','Play a GIF or image in place of a text response.','Image',50,'media_response',1,0)`,
+    );
     await transaction.execute("INSERT INTO auth_users(id,name) SELECT id,name FROM profiles");
     await transaction.execute("INSERT INTO player_handles SELECT id,'player_' || printf('%06d',ROW_NUMBER() OVER(ORDER BY id)),1 FROM profiles");
     await transaction.execute({

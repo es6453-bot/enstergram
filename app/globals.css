@@ -618,6 +618,11 @@ svg {
     #28211f 100%
   );
 }
+.art-media_response {
+  --accent: #ffa9c4;
+  --object: #ffd1df;
+  background: radial-gradient(ellipse at 53% 60%, #6c3657 0%, #3d2440 49%, #271e32 100%);
+}
 .art-grid {
   position: absolute;
   inset: 0;
@@ -1351,6 +1356,27 @@ svg {
 }
 .composer-footer > span.danger {
   color: #ff95a3;
+}
+.composer .help.danger {
+  color: #ff919e;
+}
+.response-image-controls {
+  border-top: 1px solid #343040;
+  margin-top: 18px;
+  padding-top: 16px;
+}
+.response-image-controls .help {
+  margin-block: 6px 12px;
+}
+.response-image {
+  display: block;
+  max-width: 100%;
+  max-height: 360px;
+  width: auto;
+  height: auto;
+  margin-block: 12px;
+  border-radius: 10px;
+  object-fit: contain;
 }
 .help {
   font-size: 10px;

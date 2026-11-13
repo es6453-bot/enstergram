@@ -40,7 +40,8 @@ const schema =
   readFileSync("drizzle/0007_social_profiles_streaks.sql", "utf8") +
   readFileSync("drizzle/0008_vercel_identity_links.sql", "utf8") +
   readFileSync("drizzle/0009_frictionless_auth.sql", "utf8") +
-  readFileSync("drizzle/0010_staff_roles.sql", "utf8");
+  readFileSync("drizzle/0010_staff_roles.sql", "utf8") +
+  readFileSync("drizzle/0011_submission_media.sql", "utf8");
 class Adapter {
   constructor(raw) {
     this.raw = raw;
@@ -165,9 +166,11 @@ before(async () => {
     "social",
     "identity-policy",
     "access",
+    "media-limits",
+    "response-media",
   ]) {
     const source = readFileSync(`lib/${moduleName}.ts`, "utf8").replace(
-      /from\s*["']\.\/(time|progression|social-seed|access)["']/g,
+      /from\s*["']\.\/(time|progression|social-seed|access|media-limits)["']/g,
       (_, name) => `from './${name}.mjs'`,
     );
     writeFileSync(
@@ -184,6 +187,7 @@ before(async () => {
     .replace(/from\s*['"]\.\/rules['"]/, "from './rules.mjs'")
     .replace(/from\s*['"]\.\/time['"]/, "from './time.mjs'")
     .replace(/from\s*['"]\.\/social['"]/, "from './social.mjs'")
+    .replace(/from\s*['"]\.\/(response-media|media-limits)['"]/g, (_, name) => `from './${name}.mjs'`)
     .replace(
       /from\s*['"]\.\/identity-policy['"]/,
       "from './identity-policy.mjs'",
@@ -491,6 +495,7 @@ test("ballots allow partial edits, reject repeats and self-votes, anonymous feed
     "content",
     "effect_name",
     "effect_type",
+      "has_media",
     "id",
     "parameter",
   ]);
@@ -1184,7 +1189,7 @@ test("decorated profiles appear only in finalized results, never in anonymous vo
   const anonymous = await server.feed("r", "alice");
   assert.deepEqual(
     Object.keys(anonymous.entries[0]).sort(),
-    ["id", "content", "effect_name", "effect_type", "parameter"].sort(),
+    ["id", "content", "effect_name", "effect_type", "has_media", "parameter"].sort(),
   );
   for (const term of [
     "Decorated Bob",

@@ -1,8 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { getCurrentUser } from "../../../lib/current-user";
-import { setup, state, mutate, feed, stmt } from "../../../lib/server";
+import { setup, state, mutate, feed, stmt, submitMedia } from "../../../lib/server";
 import { currencyCopy } from "../../../lib/rules";
 import { AccessError } from "../../../lib/access";
+import { MAX_RESPONSE_IMAGE_BYTES } from "../../../lib/media-limits";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 export async function GET(request: Request) {
@@ -43,7 +44,9 @@ export async function POST(request: Request) {
     const identity = await getCurrentUser();
     if (!identity)
       return Response.json({ error: "Sign in to play." }, { status: 401 });
-    if (Number(request.headers.get("content-length") || 0) > 16000)
+    const multipart = request.headers.get("content-type")?.startsWith("multipart/form-data;");
+    const limit = multipart ? MAX_RESPONSE_IMAGE_BYTES + 16_000 : 16_000;
+    if (Number(request.headers.get("content-length") || 0) > limit)
       throw new Error("Request too large.");
     if (!identity.onboarded)
       return Response.json(
@@ -57,8 +60,11 @@ export async function POST(request: Request) {
       `${user.id}:${bucket}`,
       bucket,
     ).run();
-    const b: any = await request.json();
-    await mutate(b.action, b, user);
+    if (multipart) await submitMedia(await request.formData(), user.id);
+    else {
+      const b: any = await request.json();
+      await mutate(b.action, b, user);
+    }
     return Response.json({ ok: true });
   } catch (e) {
     if (e instanceof AccessError)

@@ -9,6 +9,8 @@ import {
   moderatePlayer,
 } from "./access";
 import { dailyWindow, GAME_TIME_ZONE, validateDay } from "./time";
+import { processResponseImage } from "./response-media";
+import { MAX_RESPONSE_IMAGE_BYTES } from "./media-limits";
 import {
   socialState,
   socialMutation,
@@ -23,6 +25,8 @@ import {
   transform,
   followers,
   words,
+  hasLongWord,
+  MAX_WORD_CHARACTERS,
   validateRules,
   validateItem,
 } from "./rules";
@@ -170,6 +174,9 @@ export async function seed(actor: string) {
         "INSERT OR IGNORE INTO catalog(id,name,description,icon,cost,effect,parameter) VALUES(?,?,?,?,?,?,?)",
         ...x,
       ),
+    ),
+    stmt(
+      "INSERT OR IGNORE INTO catalog(id,name,description,icon,cost,effect,parameter,placeholder) VALUES('gif-response','GIF Response','Play a GIF or image in place of a text response.','Image',50,'media_response',1,0)",
     ),
     stmt(
       "INSERT OR IGNORE INTO prompts(id,content,state) VALUES('sample-1','Explain why you were fired from your job as a ghost.','draft')",
@@ -338,10 +345,13 @@ export async function state(userId: string) {
     admin ? "SELECT * FROM catalog" : "SELECT * FROM catalog WHERE enabled=1",
   );
   const inventory = await all(
-    "SELECT i.*,c.name,c.description,c.icon,c.effect,c.parameter,c.enabled,c.cost,c.revision,c.available_from,c.available_until FROM inventory i JOIN catalog c ON c.id=i.item_id WHERE user_id=? AND quantity>0",
+    "SELECT i.*,c.name,c.description,c.icon,c.image,c.effect,c.parameter,c.enabled,c.cost,c.revision,c.available_from,c.available_until FROM inventory i JOIN catalog c ON c.id=i.item_id WHERE user_id=? AND quantity>0",
     userId,
   );
-  const mine = await all("SELECT * FROM submissions WHERE user_id=?", userId);
+  const mine = await all(
+    "SELECT s.*, m.submission_id IS NOT NULL AS has_media FROM submissions s LEFT JOIN submission_media m ON m.submission_id=s.id WHERE s.user_id=?",
+    userId,
+  );
   const active = await all(
     "SELECT a.round_id,a.submission_id,e.* FROM activations a JOIN effects e ON e.activation_id=a.id WHERE a.user_id=?",
     userId,
@@ -406,7 +416,7 @@ export async function feed(roundId: string, userId: string) {
   if (phase(r) === "RESULTS") {
     await finalize(r);
     const entries = await all(
-      "SELECT s.content,p.name,r.*,e.name AS effect_name,e.type AS effect_type,e.parameter FROM results r JOIN submissions s ON s.id=r.submission_id JOIN profiles p ON p.id=r.user_id LEFT JOIN effects e ON e.submission_id=s.id WHERE r.round_id=? ORDER BY rank",
+      "SELECT s.content,p.name,r.*,e.name AS effect_name,e.type AS effect_type,e.parameter,m.submission_id IS NOT NULL AS has_media FROM results r JOIN submissions s ON s.id=r.submission_id JOIN profiles p ON p.id=r.user_id LEFT JOIN effects e ON e.submission_id=s.id LEFT JOIN submission_media m ON m.submission_id=s.id WHERE r.round_id=? ORDER BY rank",
       roundId,
     );
     const profiles = new Map();
@@ -423,7 +433,7 @@ export async function feed(roundId: string, userId: string) {
   if (phase(r) !== "VOTING") return { entries: [] };
   // Only opaque submission IDs, content and public effect snapshots cross this boundary.
   const entries = await all(
-    "SELECT s.id,s.content,e.name AS effect_name,e.type AS effect_type,e.parameter FROM submissions s LEFT JOIN effects e ON e.submission_id=s.id WHERE s.round_id=? AND s.user_id<>?",
+    "SELECT s.id,s.content,e.name AS effect_name,e.type AS effect_type,e.parameter,m.submission_id IS NOT NULL AS has_media FROM submissions s LEFT JOIN effects e ON e.submission_id=s.id LEFT JOIN submission_media m ON m.submission_id=s.id WHERE s.round_id=? AND s.user_id<>?",
     roundId,
     userId,
   );
@@ -451,6 +461,70 @@ export async function feed(roundId: string, userId: string) {
       userId,
     ),
   };
+}
+export async function submitMedia(form: FormData, userId: string) {
+  await requireActive(db(), userId);
+  const roundId = form.get("roundId"),
+    itemId = form.get("itemId"),
+    revision = Number(form.get("revision")),
+    file = form.get("image");
+  if (typeof roundId !== "string" || roundId.length > 100)
+    throw new Error("Choose an open round.");
+  if (!(file instanceof File) || !file.size || file.size > MAX_RESPONSE_IMAGE_BYTES)
+    throw new Error("Choose an image up to 2 MB.");
+
+  const r = await one("SELECT * FROM rounds WHERE id=?", roundId);
+  if (!r || phase(r) !== "SUBMISSION")
+    throw new Error("Submissions are closed.");
+  const active = await one(
+    "SELECT a.item_id,e.type FROM activations a JOIN effects e ON a.id=e.activation_id WHERE a.user_id=? AND a.round_id=?",
+    userId,
+    roundId,
+  );
+  if (active && (active.type !== "media_response" || (itemId && active.item_id !== itemId)))
+    throw new Error("You already used this round’s activation.");
+  if (!active) {
+    const item = typeof itemId === "string" && itemId.length <= 100 && await one(
+      "SELECT c.effect FROM inventory i JOIN catalog c ON c.id=i.item_id WHERE i.user_id=? AND i.item_id=? AND i.quantity>0 AND c.enabled=1 AND c.revision=?",
+      userId,
+      itemId,
+      revision,
+    );
+    if (!item || item.effect !== "media_response")
+      throw new Error("Choose an available GIF or image power-up from your inventory.");
+  }
+
+  const { mime, image } = await processResponseImage(new Uint8Array(await file.arrayBuffer()));
+  const now = Date.now();
+  const responseId = "(SELECT id FROM submissions WHERE round_id=? AND user_id=?)";
+  const operations = [
+    stmt(
+      "INSERT INTO submissions VALUES(?,?,?,?,?) ON CONFLICT(round_id,user_id) DO UPDATE SET content=excluded.content,updated=excluded.updated",
+      id(), roundId, userId, "", now,
+    ),
+  ];
+  if (!active)
+    operations.push(stmt(
+      `INSERT INTO activations(id,user_id,round_id,submission_id,item_id,created,catalog_revision)
+       SELECT ?,?,?,${responseId},?,?,? WHERE NOT EXISTS(
+         SELECT 1 FROM activations a JOIN effects e ON e.activation_id=a.id
+         WHERE a.user_id=? AND a.round_id=? AND a.item_id=? AND e.type='media_response'
+       )`,
+      id(), userId, roundId, roundId, userId, itemId, now, revision,
+      userId, roundId, itemId,
+    ));
+  operations.push(
+    stmt(
+      `INSERT INTO submission_media(submission_id,mime,image) VALUES(${responseId},?,?)
+       ON CONFLICT(submission_id) DO UPDATE SET mime=excluded.mime,image=excluded.image`,
+      roundId, userId, mime, image,
+    ),
+    stmt("INSERT OR IGNORE INTO receipts VALUES(?,?,?,?)",
+      `${roundId}:${userId}:submission`, userId, roundId, "submission",
+    ),
+    activityStatement(db(), userId, "submission", roundId, now),
+  );
+  await db().batch(operations);
 }
 export async function mutate(action: string, b: any, user: any) {
   const u = user.id,
@@ -507,6 +581,8 @@ export async function mutate(action: string, b: any, user: any) {
       b.content.length > 2000
     )
       throw new Error(`Use 1–${limit} words and at most 2,000 characters.`);
+    if (hasLongWord(b.content))
+      throw new Error(`Each word can have at most ${MAX_WORD_CHARACTERS} characters, including dashes and underscores.`);
     await db().batch([
       stmt(
         "INSERT INTO submissions VALUES(?,?,?,?,?) ON CONFLICT(round_id,user_id) DO UPDATE SET content=excluded.content,updated=excluded.updated",

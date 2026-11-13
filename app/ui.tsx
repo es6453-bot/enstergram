@@ -41,8 +41,11 @@ import {
   Pencil,
   Gift,
   Loader2,
+  Image as ImageIcon,
 } from "lucide-react";
-import { words, EFFECTS, currencyCopy } from "../lib/rules";
+import { words, hasLongWord, MAX_WORD_CHARACTERS, EFFECTS, currencyCopy } from "../lib/rules";
+import { MAX_RESPONSE_IMAGE_BYTES, RESPONSE_IMAGE_ACCEPT } from "../lib/media-limits";
+import { ResponseImage } from "./response-image";
 import {
   easternDate,
   easternDeadline,
@@ -50,12 +53,13 @@ import {
   nextDay,
   nextPhaseDelay,
 } from "../lib/time";
-const icons: any = { Zap, Shield, Briefcase, Type, Sparkles };
+const icons: any = { Zap, Shield, Briefcase, Type, Sparkles, Image: ImageIcon };
 const effectLabels: any = {
   word_limit: "WORD LIMIT",
   positive_multiplier: "SCORE BOOST",
   downvote_shield: "DAMAGE CONTROL",
   clout_multiplier: "LIKES MULTIPLIER",
+  media_response: "GIF OR IMAGE",
 };
 const benefit = (x: any) =>
   x.effect === "word_limit"
@@ -64,7 +68,9 @@ const benefit = (x: any) =>
       ? `${x.parameter}× positive points`
       : x.effect === "downvote_shield"
         ? `Block ${x.parameter} downvote${x.parameter === 1 ? "" : "s"}`
-        : `${x.parameter}× round Likes`;
+        : x.effect === "media_response"
+          ? "Submit a GIF or image"
+          : `${x.parameter}× round Likes`;
 const format = (n: number) => new Intl.NumberFormat("en-US").format(n || 0);
 const date = easternDate;
 const deadlineDate = easternDeadline;
@@ -82,8 +88,12 @@ async function api(b?: any) {
     b
       ? {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(b),
+          ...(b instanceof FormData
+            ? { body: b }
+            : {
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(b),
+              }),
         }
       : { cache: "no-store" },
   );
@@ -131,6 +141,8 @@ export default function Game({ view = "shop" }: { view?: string }) {
     [modal, setModal] = useState<any>(null),
     [mobile, setMobile] = useState(false),
     [content, setContent] = useState(""),
+    [image, setImage] = useState<File | null>(null),
+    [mediaItemId, setMediaItemId] = useState(""),
     [feed, setFeed] = useState<any>(null),
     [roundId, setRoundId] = useState(""),
     [choices, setChoices] = useState<(string | null)[]>([
@@ -218,6 +230,8 @@ export default function Game({ view = "shop" }: { view?: string }) {
     const key = `${view}:${currentId || ""}`;
     if (initializedComposer.current === key) return;
     initializedComposer.current = key;
+    setImage(null);
+    setMediaItemId("");
     const existing = data.mine.find(
       (entry: any) => entry.round_id === currentId,
     )?.content;
@@ -274,6 +288,29 @@ export default function Game({ view = "shop" }: { view?: string }) {
         (filter === "affordable" && x.cost <= balance) ||
         (filter === "owned" && stock(x.id) > 0)),
   );
+  const savedResponse = data?.mine.find((s: any) => s.round_id === currentId);
+  const mediaOptions = (data?.inventory || []).filter(
+    (x: any) => x.effect === "media_response" && x.enabled &&
+      (!x.available_from || x.available_from <= data.serverNow) &&
+      (!x.available_until || x.available_until > data.serverNow),
+  );
+  const selectedMedia = mediaOptions.find((x: any) => x.item_id === mediaItemId) || mediaOptions[0];
+  const mediaActive = activeEffect?.type === "media_response";
+  const canUpload = mediaActive || (!activeEffect && !!selectedMedia);
+  const longWord = hasLongWord(content);
+  const wordCount = words(content);
+  const confirmImage = () => {
+    if (!image || !currentId || !canUpload) return;
+    const form = new FormData();
+    form.set("roundId", currentId);
+    form.set("image", image);
+    if (!mediaActive) {
+      form.set("itemId", selectedMedia.item_id);
+      form.set("revision", String(selectedMedia.revision));
+    }
+    void act(form, mediaActive ? "Image response updated." : "Image response submitted. One power-up consumed.")
+      .then((ok) => { if (ok) setImage(null); });
+  };
   const inventoryView = view === "inventory" || tab === "inventory";
   return (
     <div className="app-shell">
@@ -528,13 +565,17 @@ export default function Game({ view = "shop" }: { view?: string }) {
                               item={{ ...x, id: x.item_id }}
                               quantity={x.quantity}
                               inventory
-                              onClick={() =>
+                              onClick={() => {
+                                if (x.effect === "media_response") {
+                                  window.location.assign("/submit");
+                                  return;
+                                }
                                 setModal({
                                   type: "activate",
                                   item: x,
                                   roundId: current?.id || "",
-                                })
-                              }
+                                });
+                              }}
                             />
                           ))}
                         </div>
@@ -829,51 +870,86 @@ export default function Game({ view = "shop" }: { view?: string }) {
                           <b>{data.profile.name}</b>
                           <span>Only you can see this until voting.</span>
                         </div>
-                        <textarea
-                          aria-label="Your response"
-                          placeholder="Post something brilliant. Or don’t."
-                          value={content}
-                          maxLength={2000}
-                          onChange={(e) => setContent(e.target.value)}
-                        />
-                        <div className="composer-footer">
-                          <span
-                            className={words(content) > limit ? "danger" : ""}
-                          >
-                            {words(content)} / {limit} words
-                          </span>
-                          <button
-                            className="primary"
-                            disabled={
-                              busy || !words(content) || words(content) > limit
-                            }
-                            onClick={() =>
-                              act(
-                                {
-                                  action: "submit",
-                                  roundId: current.id,
-                                  content,
-                                },
-                                "Your post is officially on the internet. Edits are open until the deadline.",
-                              )
-                            }
-                          >
-                            {busy ? (
-                              <Loader2 className="spin" size={16} />
-                            ) : (
-                              <PenLine size={16} />
-                            )}{" "}
-                            {data.mine.some(
-                              (s: any) => s.round_id === current.id,
-                            )
-                              ? "Update response"
-                              : "Submit response"}
-                          </button>
-                        </div>
-                        <p className="help">
-                          Whitespace separates words. Standalone emoji don’t
-                          count. Contractions and hyphenated words count as one.
-                        </p>
+                        {!mediaActive && (
+                          <>
+                            <textarea
+                              aria-label="Your response"
+                              placeholder="Post something brilliant. Or don’t."
+                              value={content}
+                              maxLength={2000}
+                              onChange={(e) => setContent(e.target.value)}
+                            />
+                            <div className="composer-footer">
+                              <span
+                                className={longWord || wordCount > limit ? "danger" : ""}
+                              >
+                                {wordCount} / {limit} words
+                              </span>
+                              <button
+                                className="primary"
+                                disabled={
+                                  busy || longWord || !wordCount || wordCount > limit
+                                }
+                                onClick={() =>
+                                  act(
+                                    {
+                                      action: "submit",
+                                      roundId: current.id,
+                                      content,
+                                    },
+                                    "Your post is officially on the internet. Edits are open until the deadline.",
+                                  )
+                                }
+                              >
+                                {busy ? (
+                                  <Loader2 className="spin" size={16} />
+                                ) : (
+                                  <PenLine size={16} />
+                                )}{" "}
+                                {savedResponse ? "Update response" : "Submit response"}
+                              </button>
+                            </div>
+                            <p className={longWord ? "help danger" : "help"} role={longWord ? "alert" : undefined}>
+                              {longWord
+                                ? `Shorten each word to ${MAX_WORD_CHARACTERS} characters or fewer, including dashes and underscores.`
+                                : `Each word can have up to ${MAX_WORD_CHARACTERS} characters, including dashes and underscores.`}
+                            </p>
+                          </>
+                        )}
+                        {savedResponse?.has_media ? <ResponseImage id={savedResponse.id} key={savedResponse.updated} alt="Your submitted GIF or image" /> : null}
+                        {canUpload && (
+                          <div className="response-image-controls">
+                            {mediaOptions.length > 1 && !mediaActive && (
+                              <label className="form-label">
+                                Image power-up
+                                <select value={selectedMedia.item_id} onChange={(e) => setMediaItemId(e.target.value)}>
+                                  {mediaOptions.map((item: any) => <option key={item.item_id} value={item.item_id}>{currencyCopy(item.name)}</option>)}
+                                </select>
+                              </label>
+                            )}
+                            <label className="form-label">
+                              {mediaActive ? "Replace your GIF or image" : "Or use a GIF or image power-up"}
+                              <input
+                                key={`${currentId}:${savedResponse?.updated || 0}`}
+                                type="file"
+                                accept={RESPONSE_IMAGE_ACCEPT}
+                                disabled={busy}
+                                onChange={(e) => {
+                                  const file = e.target.files?.[0] || null;
+                                  if (file && (!file.size || file.size > MAX_RESPONSE_IMAGE_BYTES)) {
+                                    setImage(null);
+                                    e.target.value = "";
+                                    setToast("Choose a GIF or image up to 2 MB.");
+                                  } else setImage(file);
+                                }}
+                              />
+                            </label>
+                            <p className="help">GIF, PNG, JPEG, or WebP. Up to 2 MB.</p>
+                            <button className="secondary" disabled={busy || !image} onClick={() => setModal({ type: "image", roundId: currentId })}>
+                              <ImageIcon size={16} /> {mediaActive ? "Review replacement" : "Review image response"}
+                            </button>
+                          </div>
+                        )}
                       </section>
                       <div className="panel activation-panel">
                         <Zap size={22} />
@@ -886,7 +962,7 @@ export default function Game({ view = "shop" }: { view?: string }) {
                           <p>
                             {activeEffect
                               ? `One item consumed. This round’s activation slot is used. ${benefit({ ...activeEffect, effect: activeEffect.type })}.`
-                              : "Save your response, then activate an owned power-up before submissions close. For Word Expansion, activate first and edit up to the new limit."}
+                              : "Save your text response before activating a text power-up. With a GIF Response in your bag, you can upload an image directly."}
                           </p>
                         </div>
                         <a className="secondary" href="/inventory">
@@ -931,14 +1007,14 @@ export default function Game({ view = "shop" }: { view?: string }) {
                                   ANONYMOUS TAKE ·{" "}
                                   {String(i + 1).padStart(2, "0")}
                                 </span>
-                                <h3>{s.content}</h3>
+                                {s.has_media ? <ResponseImage id={s.id} /> : <h3>{s.content}</h3>}
                                 {s.effect_name && (
                                   <span className="effect-badge">
                                     <Zap size={13} />
                                     {currencyCopy(s.effect_name)} ·{" "}
                                     {effectLabels[s.effect_type] ||
                                       s.effect_type}
-                                    : {s.parameter}
+                                    {s.effect_type !== "media_response" && `: ${s.parameter}`}
                                   </span>
                                 )}
                               </div>
@@ -978,7 +1054,7 @@ export default function Game({ view = "shop" }: { view?: string }) {
                                       )}
                                       value={s.id}
                                     >
-                                      Take {j + 1}: {s.content.slice(0, 45)}
+                                      Take {j + 1}: {s.has_media ? "GIF or image" : s.content.slice(0, 45)}
                                     </option>
                                   ))}
                                 </select>
@@ -1056,7 +1132,8 @@ export default function Game({ view = "shop" }: { view?: string }) {
                               >
                                 <Sparkles size={14} /> View profile
                               </button>
-                              <h3>{s.content}</h3>
+                              {s.has_media ? <ResponseImage id={s.submission_id} /> : <h3>{s.content}</h3>}
+                              {s.has_media ? <span className="effect-badge">{currencyCopy(s.effect_name || "GIF Response")}</span> : null}
                               <div className="score-breakdown">
                                 <span>Raw {s.raw}</span>
                                 <span>Bonus +{s.bonus}</span>
@@ -1178,6 +1255,19 @@ export default function Game({ view = "shop" }: { view?: string }) {
           <p className="help">
             Profile revealed after this round’s voting ended.
           </p>
+        </Modal>
+      )}
+      {modal?.type === "image" && image && modal.roundId === currentId && (
+        <Modal title={mediaActive ? "Replace image response?" : "Submit an image response?"} close={() => !busy && setModal(null)}>
+          <p>{image.name}</p>
+          <p className="muted">
+            {mediaActive
+              ? "This replaces the current image for this round. You can replace it again until submissions close."
+              : `This submits the image in place of text, consumes one ${currencyCopy(selectedMedia?.name || "GIF Response")}, and uses your one power-up for the round. You can replace the image until submissions close.`}
+          </p>
+          <button className="primary full" disabled={busy || !canUpload} onClick={confirmImage}>
+            {mediaActive ? "Replace image" : "Use power-up and submit"}
+          </button>
         </Modal>
       )}
       {modal?.type === "activate" && (
@@ -1357,7 +1447,7 @@ function Item({
             <span>{item.cost !== undefined ? "Likes" : "owned"}</span>
           </div>
           <button disabled={inventory && !item.enabled} onClick={onClick}>
-            {inventory ? "Activate" : "Get power-up"}
+            {inventory ? (item.effect === "media_response" ? "Go to response" : "Activate") : "Get power-up"}
             <Plus size={15} />
           </button>
         </div>
@@ -2140,7 +2230,10 @@ function ItemEditor({ item, busy, close, save }: any) {
             Supported effect
             <select
               value={x.effect}
-              onChange={(e) => change("effect", e.target.value)}
+              onChange={(e) => {
+                const effect = e.target.value;
+                setX({ ...x, effect, parameter: effect === "media_response" ? 1 : x.parameter });
+              }}
             >
               {EFFECTS.map((k) => (
                 <option key={k} value={k}>
@@ -2149,21 +2242,23 @@ function ItemEditor({ item, busy, close, save }: any) {
               ))}
             </select>
           </label>
-          <label className="form-label">
-            {x.effect === "word_limit"
-              ? "Word limit"
-              : x.effect === "downvote_shield"
-                ? "Downvotes negated"
-                : "Multiplier"}
-            <input
-              type="number"
-              required
-              min="1"
-              max="100"
-              value={x.parameter}
-              onChange={(e) => change("parameter", Number(e.target.value))}
-            />
-          </label>
+          {x.effect !== "media_response" && (
+            <label className="form-label">
+              {x.effect === "word_limit"
+                ? "Word limit"
+                : x.effect === "downvote_shield"
+                  ? "Downvotes negated"
+                  : "Multiplier"}
+              <input
+                type="number"
+                required
+                min="1"
+                max="100"
+                value={x.parameter}
+                onChange={(e) => change("parameter", Number(e.target.value))}
+              />
+            </label>
+          )}
         </div>
         <div className="form-grid">
           <label className="form-label">

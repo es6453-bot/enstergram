@@ -24,8 +24,16 @@ export const EFFECTS = [
   "positive_multiplier",
   "downvote_shield",
   "clout_multiplier",
+  "media_response",
 ] as const;
 export type Effect = { type: string; parameter: number; name?: string };
+export const MAX_WORD_CHARACTERS = 20;
+export function hasLongWord(content: string) {
+  return content
+    .normalize("NFC")
+    .split(/\s+/u)
+    .some((token) => Array.from(token).length > MAX_WORD_CHARACTERS);
+}
 export function words(s: string) {
   return s
     .trim()
@@ -128,6 +136,7 @@ export function validateItem(x: {
     !Number.isInteger(x.parameter) ||
     x.parameter < 1 ||
     x.parameter > 100 ||
+    (x.effect === "media_response" && x.parameter !== 1) ||
     !Number.isInteger(x.cost) ||
     x.cost < 0 ||
     x.cost > 100000 ||

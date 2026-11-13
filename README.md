@@ -65,7 +65,9 @@ Names, prompts, prices, effect parameters, tier thresholds, cosmetics and balanc
 - Likes are fictional, non-transferable currency, separate from voting points and Followers. A unique starting grant defaults to 100. No payment integration exists.
 - Eligible submissions and valid ballots earn unique participation receipts. Rewards settle once at finalization. Edits and retries cannot duplicate awards.
 - Purchases, inventory consumption, effects, participation and finalization retain their transactional database boundaries. Immutable ledger/results and no-overdraft protections remain enforced by SQLite/libSQL triggers and constraints.
-- Four generic competitive effects are supported: word limit, downvote shield, positive-point multiplier and round-Likes multiplier. One activation slot applies per user per round; Brand Deal never doubles Followers.
+- Each whitespace-separated token in a new or edited text response can have up to 20 characters, including dashes and underscores. Word Expansion increases the word count only.
+- Supported power-up effects include word limit, downvote shield, positive-point multiplier, round-Likes multiplier and image responses. Each player has one activation slot per round.
+- GIF Response lets a player upload a GIF, PNG, JPEG or WebP up to 2 MB as their entry. The first successful upload consumes one item. Replacements are free until submissions close. The server re-encodes images without metadata and serves them on the same origin, first to the author, then to eligible signed-in viewers during voting, and publicly once results are finalized.
 - Round rules and activated effects are immutable snapshots. New balance edits do not rewrite finalized scores or completed transactions.
 - Active voting exposes only opaque response IDs, content and applicable competitive effects. Decorated profiles appear only on one's own profile and finalized results.
 - Daily activity counts once per Eastern date for a valid submission or ballot. Freezes preserve the streak without adding activity days or rewards. Missing a day never deducts Likes, Followers or earned cosmetics.

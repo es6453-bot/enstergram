@@ -5,6 +5,7 @@ import { pathToFileURL } from "node:url";
 import { resolve } from "node:path";
 import { createClient } from "@libsql/client";
 import ts from "typescript";
+import sharp from "sharp";
 import { adaptClient } from "../lib/database.ts";
 import {
   githubSubject,
@@ -24,6 +25,8 @@ before(async () => {
     "social",
     "identity-policy",
     "access",
+    "media-limits",
+    "response-media",
     "server",
   ]) {
     let code = readFileSync(`lib/${name}.ts`, "utf8")
@@ -32,7 +35,7 @@ before(async () => {
         "const database=()=>globalThis.__platformDb;",
       )
       .replace(
-        /from\s*["']\.\/(rules|time|progression|social-seed|social|identity-policy|access)["']/g,
+        /from\s*["']\.\/(rules|time|progression|social-seed|social|identity-policy|access|response-media|media-limits)["']/g,
         (_, moduleName) => `from './${moduleName}.mjs'`,
       );
     writeFileSync(
@@ -59,7 +62,7 @@ test("libSQL applies all migrations once and exposes fractional server timestamp
     assert.equal(
       (await client.execute("SELECT COUNT(*) AS n FROM _app_migrations"))
         .rows[0].n,
-      11,
+      12,
     );
     assert.equal((await migrate(client)).applied, 0);
     const r = await client.execute("SELECT unixepoch('subsec') AS now");
@@ -95,6 +98,100 @@ test("failed schema migration rolls back DDL and never records success", async (
         .rows[0].n,
       0,
     );
+  } finally {
+    client.close();
+  }
+});
+test("response API rejects long dashed and underscored tokens, including with Word Expansion", async () => {
+  const client = await fresh();
+  try {
+    const now = Date.now();
+    await client.batch([
+      "INSERT INTO profiles VALUES('alice','alice','player',0)",
+      { sql: "INSERT INTO rounds(id,number,prompt,opens,closes,ends,config) VALUES('round',1,'Prompt',?,?,?,'{\"wordLimit\":10}')", args: [now - 1000, now + 60_000, now + 120_000] },
+      "INSERT INTO catalog(id,name,description,icon,cost,effect,parameter) VALUES('expand','Expand','Expand','Type',0,'word_limit',15)",
+      "INSERT INTO inventory VALUES('expand-stock','alice','expand',1)",
+    ], "write");
+    const submit = (content) => server.mutate("submit", { roundId: "round", content }, { id: "alice" });
+    await assert.rejects(submit("alpha_bravo_charlie_delta"), /20 characters/);
+    await assert.rejects(submit("alpha-bravo-charlie-delta"), /20 characters/);
+    await assert.rejects(submit("hello " + "-".repeat(21)), /20 characters/);
+    await submit("abcdefghijklmnopqrst");
+    const entry = await server.one("SELECT id FROM submissions");
+    await server.mutate("activate", {
+      roundId: "round", itemId: "expand", revision: 1, submissionId: entry.id,
+    }, { id: "alice" });
+    await assert.rejects(submit("é".repeat(21)), /20 characters/);
+    await submit(`one two three four five six seven eight nine ten ${"e\u0301".repeat(20)}`);
+    assert.equal((await server.one("SELECT COUNT(*) AS n FROM receipts")).n, 1);
+  } finally {
+    client.close();
+  }
+});
+test("GIF power-up spends inventory once and exposes media only in the appropriate round phase", async () => {
+  const client = await fresh();
+  try {
+    const { processResponseImage, readResponseImage } = await import("../.test-runtime/platform/response-media.mjs");
+    const now = Date.now();
+    await client.batch([
+      "INSERT INTO profiles VALUES('alice','alice','player',0),('bob','bob','player',0),('eve','eve','player',0)",
+      "INSERT INTO wallets VALUES('alice',0),('bob',0),('eve',0)",
+      "INSERT INTO ledger VALUES('grant','alice',NULL,'admin',100,'test',0)",
+      { sql: "INSERT INTO rounds(id,number,prompt,opens,closes,ends,config) VALUES('round',1,'Prompt',?,?,?,?)", args: [now - 1000, now + 60_000, now + 120_000, JSON.stringify({ wordLimit: 10, votePoints: [3, 2, 1, -1], minEntries: 5, submissionClout: 10, votingClout: 5, podiumClout: [30, 20, 10] })] },
+      "INSERT INTO catalog(id,name,description,icon,cost,effect,parameter) VALUES('gif','GIF','GIF','Image',50,'media_response',1)",
+    ], "write");
+    const gif = await sharp(Buffer.concat([Buffer.alloc(12), Buffer.alloc(12, 255)]), {
+      raw: { width: 2, height: 4, pageHeight: 2, channels: 3 },
+    }).gif({ delay: [100, 100] }).toBuffer();
+    const upload = (bytes = gif, itemId = "gif") => {
+      const form = new FormData();
+      form.set("roundId", "round");
+      if (itemId) form.set("itemId", itemId);
+      form.set("revision", "1");
+      form.set("image", new File([bytes], "image.gif", { type: "image/gif" }));
+      return form;
+    };
+    await assert.rejects(server.submitMedia(upload(), "bob"), /inventory/);
+    await server.mutate("purchase", { itemId: "gif", revision: 1, key: "test" }, { id: "alice" });
+    await server.mutate("submit", { roundId: "round", content: "Text draft" }, { id: "alice" });
+    const entry = await server.one("SELECT id FROM submissions");
+    await assert.rejects(server.mutate("activate", {
+      roundId: "round", itemId: "gif", revision: 1, submissionId: entry.id,
+    }, { id: "alice" }), /Choose a GIF or image/);
+    await assert.rejects(server.submitMedia(upload(Buffer.from("<svg/>")), "alice"), /Choose a GIF/);
+    assert.equal((await server.one("SELECT content FROM submissions")).content, "Text draft");
+    assert.equal((await server.one("SELECT quantity FROM inventory")).quantity, 1);
+    await Promise.all([server.submitMedia(upload(), "alice"), server.submitMedia(upload(), "alice")]);
+    assert.equal((await server.one("SELECT quantity FROM inventory")).quantity, 0);
+    assert.equal((await server.one("SELECT balance FROM wallets WHERE user_id='alice'")).balance, 50);
+    assert.equal((await server.one("SELECT COUNT(*) AS n FROM activations")).n, 1);
+    assert.equal((await server.one("SELECT COUNT(*) AS n FROM receipts")).n, 1);
+    const db = globalThis.__platformDb;
+    const saved = await readResponseImage(db, entry.id, "alice");
+    assert.equal(saved.mime, "image/gif");
+    assert.equal((await sharp(Buffer.from(saved.image), { animated: true }).metadata()).pages, 2);
+    assert.equal(await readResponseImage(db, entry.id), null);
+    assert.equal(await readResponseImage(db, entry.id, "bob"), null);
+    await assert.rejects(server.mutate("submit", { roundId: "round", content: "Back to text" }, { id: "alice" }), /another GIF or image/);
+    const png = await sharp({ create: { width: 4, height: 4, channels: 3, background: "orange" } }).png().toBuffer();
+    assert.equal((await processResponseImage(png)).mime, "image/webp");
+    await server.submitMedia(upload(png, null), "alice");
+    await client.execute("DROP TRIGGER round_snapshot"); // Advance fixture through the round phases.
+    await client.execute({ sql: "UPDATE rounds SET closes=? WHERE id='round'", args: [Date.now() - 100] });
+    const voting = await server.feed("round", "bob");
+    assert.deepEqual(voting.entries, [{
+      id: entry.id, content: "", effect_name: "GIF", effect_type: "media_response", parameter: 1, has_media: 1,
+    }]);
+    assert.equal((await readResponseImage(db, entry.id, "bob")).mime, "image/webp");
+    assert.equal(await readResponseImage(db, entry.id), null);
+    await assert.rejects(server.submitMedia(upload(), "alice"), /closed/);
+    await server.mutate("vote", { roundId: "round", choices: [entry.id, null, null, null] }, { id: "bob" });
+    await client.execute({ sql: "UPDATE rounds SET ends=? WHERE id='round'", args: [Date.now() - 10] });
+    const results = await server.feed("round", "bob");
+    assert.equal(results.entries[0].score, 3);
+    assert.equal(results.entries[0].bonus, 0);
+    assert.equal(results.entries[0].has_media, 1);
+    assert.equal((await readResponseImage(db, entry.id)).mime, "image/webp");
   } finally {
     client.close();
   }
@@ -257,7 +354,7 @@ test("GitHub access defaults to owner-only and uses stable numeric verified subj
 async function snapshotOf(client) {
   const names = (
     await client.execute(
-      "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT IN ('_app_migrations','auth_identities','auth_users','player_handles','auth_verification_tokens','auth_link_tokens','auth_rate_limits','google_accounts','staff_roles','admin_invitations','player_suspensions')",
+      "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT IN ('_app_migrations','auth_identities','auth_users','player_handles','auth_verification_tokens','auth_link_tokens','auth_rate_limits','google_accounts','staff_roles','admin_invitations','player_suspensions','submission_media')",
     )
   ).rows.map((x) => x.name);
   const tables = {};

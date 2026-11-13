@@ -21,9 +21,11 @@ export async function guestData(db: GameDatabase, now = Date.now()) {
     const entries = (
       await db
         .prepare(
-        `SELECT s.content,p.name,r.rank,r.raw,r.bonus,r.score,r.followers,r.breakdown,e.name AS effect_name
+        `SELECT s.content,p.name,r.rank,r.raw,r.bonus,r.score,r.followers,r.breakdown,e.name AS effect_name,
+        m.submission_id AS media_id
       FROM results r JOIN submissions s ON s.id=r.submission_id JOIN profiles p ON p.id=r.user_id
-      LEFT JOIN effects e ON e.submission_id=s.id WHERE r.round_id=? ORDER BY r.rank`,
+      LEFT JOIN effects e ON e.submission_id=s.id
+      LEFT JOIN submission_media m ON m.submission_id=s.id WHERE r.round_id=? ORDER BY r.rank`,
         )
         .bind(round.id)
         .all()

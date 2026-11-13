@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useState, useEffect } from "react";
 import { Flame, ArrowUpRight } from "lucide-react";
-import { words } from "../../lib/rules";
+import { words, hasLongWord, MAX_WORD_CHARACTERS } from "../../lib/rules";
+import { ResponseImage } from "../response-image";
 import { easternDeadline } from "../../lib/time";
 type GuestData = Awaited<
   ReturnType<typeof import("../../lib/guest").guestData>
@@ -12,6 +13,8 @@ export default function Guest({ data }: { data: GuestData }) {
   const [draft, setDraft] = useState("");
   const [saved, setSaved] = useState(false);
   const [ready, setReady] = useState(false);
+  const wordCount = words(draft);
+  const longWord = hasLongWord(draft);
   useEffect(() => {
     try {
       const item = JSON.parse(
@@ -83,18 +86,21 @@ export default function Guest({ data }: { data: GuestData }) {
             />
             <div className="composer-footer">
               <span
-                className={words(draft) > data.practice.limit ? "over" : ""}
+                className={longWord || wordCount > data.practice.limit ? "over" : ""}
               >
-                {words(draft)} / {data.practice.limit} words
+                {wordCount} / {data.practice.limit} words
               </span>
               <button
                 className="secondary"
-                disabled={!draft.trim() || words(draft) > data.practice.limit}
+                disabled={!wordCount || longWord || wordCount > data.practice.limit}
                 onClick={() => setSaved(true)}
               >
                 Try this response
               </button>
             </div>
+            <p className="help" role={longWord ? "alert" : undefined}>
+              Each word can have up to {MAX_WORD_CHARACTERS} characters, including dashes and underscores.
+            </p>
             {saved && (
               <p role="status">
                 Practice complete. Your draft will be here when you sign in.
@@ -133,7 +139,7 @@ export default function Guest({ data }: { data: GuestData }) {
                       <span className="pill">
                         #{entry.rank} · {entry.name}
                       </span>
-                      <h3>{entry.content}</h3>
+                      {entry.media_id ? <ResponseImage id={entry.media_id} /> : <h3>{entry.content}</h3>}
                       <p>
                         Raw {entry.raw} + bonus {entry.bonus} ={" "}
                         <b>{entry.score} points</b> · +{entry.followers}{" "}
