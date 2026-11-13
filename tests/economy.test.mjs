@@ -10,6 +10,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { DEFAULTS, words, transform, followers, phase } from "../lib/rules.ts";
 import {
   nyMidnight,
+  nyTime,
   nextDay,
   dailyWindow,
   easternDeadline,
@@ -42,7 +43,8 @@ const schema =
   readFileSync("drizzle/0009_frictionless_auth.sql", "utf8") +
   readFileSync("drizzle/0010_staff_roles.sql", "utf8") +
   readFileSync("drizzle/0011_submission_media.sql", "utf8") +
-  readFileSync("drizzle/0012_comments_and_positive_ballots.sql", "utf8");
+  readFileSync("drizzle/0012_comments_and_positive_ballots.sql", "utf8") +
+  readFileSync("drizzle/0013_eastern_results_schedule.sql", "utf8");
 class Adapter {
   constructor(raw) {
     this.raw = raw;
@@ -823,7 +825,7 @@ test("daily Eastern windows include 23:59 and overlap next-day voting with a new
     const a = { ...dailyWindow(day), cancelled: 0 };
     const b = { ...dailyWindow(nextDay(day, 1)), cancelled: 0 };
     assert.equal(a.closes, b.opens);
-    assert.equal(a.ends, b.closes);
+    assert.ok(a.ends < b.closes);
     assert.equal(phase(a, a.opens - 1), "SCHEDULED");
     assert.equal(phase(a, a.opens), "SUBMISSION");
     assert.equal(phase(a, a.closes - 1), "SUBMISSION");
@@ -831,8 +833,10 @@ test("daily Eastern windows include 23:59 and overlap next-day voting with a new
     assert.equal(phase(b, a.closes), "SUBMISSION");
     assert.equal(phase(a, a.ends - 1), "VOTING");
     assert.equal(phase(a, a.ends), "RESULTS");
+    assert.equal(phase(b, a.ends), "SUBMISSION");
     assert.match(easternDate(a.opens), /00:00/);
-    assert.match(easternDeadline(a.closes), /23:59/);
+    assert.match(easternDeadline(a.closes), /00:00/);
+    assert.match(easternDeadline(a.ends), /22:00/);
     assert.equal(easternDay(a.closes - 1), day);
   }
   assert.equal(
@@ -845,6 +849,13 @@ test("daily Eastern windows include 23:59 and overlap next-day voting with a new
       3600000,
     25,
   );
+});
+
+test("10 p.m. follows the Eastern offset on the spring and fall transition days", () => {
+  assert.equal(new Date(dailyWindow("2026-03-07").ends).toISOString(), "2026-03-09T02:00:00.000Z");
+  assert.equal(new Date(dailyWindow("2026-10-31").ends).toISOString(), "2026-11-02T03:00:00.000Z");
+  assert.equal(new Date(nyTime("2026-03-08", "02:30")).toISOString(), "2026-03-08T07:30:00.000Z");
+  assert.equal(new Date(nyTime("2026-11-01", "01:30")).toISOString(), "2026-11-01T05:30:00.000Z");
 });
 
 test("daily scheduling calculates deadlines on the server and reserves one Eastern date", async () => {
@@ -871,7 +882,7 @@ test("daily scheduling calculates deadlines on the server and reserves one Easte
   const a = raw.prepare("SELECT * FROM rounds WHERE prompt_id='p1'").get();
   assert.equal(a.opens, nyMidnight("2028-03-12"));
   assert.equal(a.closes, nyMidnight("2028-03-13"));
-  assert.equal(a.ends, nyMidnight("2028-03-14"));
+  assert.equal(a.ends, nyTime("2028-03-13", "22:00"));
   assert.equal(
     raw.prepare("SELECT scheduled FROM prompts WHERE id='p1'").get().scheduled,
     "2028-03-12",
@@ -913,6 +924,30 @@ test("daily scheduling calculates deadlines on the server and reserves one Easte
       .get().n,
     1,
   );
+});
+
+test("admin schedule settings affect newly published rounds only and enforce valid time ordering", async () => {
+  const raw = bind(fresh());
+  const owner = { id: "owner" };
+  const rules = {
+    ...DEFAULTS,
+    schedule: { submissionOpens: "08:00", votingOpens: "07:00", resultsAt: "19:30" },
+  };
+  await server.mutate("prompt", { id: "before", content: "Before" }, owner);
+  await server.mutate("publishPrompt", { id: "before", day: "2028-05-01" }, owner);
+  await assert.rejects(server.mutate("settings", {
+    rules: { ...rules, schedule: { ...rules.schedule, resultsAt: "06:00" } },
+  }, owner), /after voting opens/);
+  await server.mutate("settings", { rules }, owner);
+  await server.mutate("prompt", { id: "after", content: "After" }, owner);
+  await server.mutate("publishPrompt", { id: "after", day: "2028-05-02" }, owner);
+  const get = (id) => raw.prepare("SELECT opens,closes,ends FROM rounds WHERE prompt_id=?").get(id);
+  assert.equal(get("before").ends, nyTime("2028-05-02", "22:00"));
+  assert.deepEqual({ ...get("after") }, {
+    opens: nyTime("2028-05-02", "08:00"),
+    closes: nyTime("2028-05-03", "07:00"),
+    ends: nyTime("2028-05-03", "19:30"),
+  });
 });
 
 test("staff can publish today's prompt immediately through the normal Eastern deadline", async () => {

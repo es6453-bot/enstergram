@@ -8,7 +8,10 @@ import {
   requireActive,
   moderatePlayer,
 } from "./access";
-import { dailyWindow, easternDay, GAME_TIME_ZONE, validateDay } from "./time";
+import {
+  dailyWindow, DEFAULT_SCHEDULE, easternDay, GAME_TIME_ZONE,
+  validateDay, validateSchedule,
+} from "./time";
 import { processResponseImage } from "./response-media";
 import { MAX_RESPONSE_IMAGE_BYTES } from "./media-limits";
 import { addComment, removeComment } from "./comments";
@@ -127,6 +130,7 @@ export async function configuration(): Promise<Rules> {
   return {
     ...DEFAULTS,
     ...stored,
+    schedule: stored.schedule ?? DEFAULT_SCHEDULE,
     votePoints: (stored.votePoints ?? DEFAULTS.votePoints).slice(0, BALLOT_LABELS.length),
   };
 }
@@ -328,19 +332,31 @@ export async function finalize(r: any) {
   }
   ops.push(
     stmt(
-      "UPDATE rounds SET finalized=? WHERE id=? AND finalized IS NULL AND cancelled=0",
+      "UPDATE rounds SET finalized=? WHERE id=? AND finalized IS NULL AND cancelled=0 AND ends<=unixepoch('subsec')*1000",
       Date.now(),
       r.id,
     ),
   );
   await db().batch(ops);
 }
+export async function finalizeDueRounds() {
+  const rounds = await all(
+    "SELECT * FROM rounds WHERE finalized IS NULL AND cancelled=0 AND ends<=? ORDER BY ends",
+    Date.now(),
+  );
+  for (const round of rounds) await finalize(round);
+}
+
+export async function nextResultsDeadline() {
+  return (await one(
+    "SELECT MIN(ends) AS deadline FROM rounds WHERE finalized IS NULL AND cancelled=0",
+  ))?.deadline ?? null;
+}
 export async function state(userId: string) {
   await requireActive(db(), userId);
   const role = await roleFor(db(), userId),
     admin = isStaff(role);
-  const rounds = await all("SELECT * FROM rounds ORDER BY opens DESC");
-  for (const r of rounds) await finalize(r);
+  await finalizeDueRounds();
   const rs = await all("SELECT * FROM rounds ORDER BY opens DESC");
   const catalog = await all(
     admin ? "SELECT * FROM catalog" : "SELECT * FROM catalog WHERE enabled=1",
@@ -410,12 +426,13 @@ export async function state(userId: string) {
       : [],
   };
 }
-export async function feed(roundId: string, userId: string) {
+export async function feed(roundId: string, userId: string, votingOnly = false) {
   await requireActive(db(), userId);
   const r = await one("SELECT * FROM rounds WHERE id=?", roundId);
   if (!r) throw new Error("Round not found.");
   if (phase(r) === "RESULTS") {
     await finalize(r);
+    if (votingOnly) return { entries: [] };
     const entries = await all(
       "SELECT s.content,p.name,r.*,e.name AS effect_name,e.type AS effect_type,e.parameter,m.submission_id IS NOT NULL AS has_media FROM results r JOIN submissions s ON s.id=r.submission_id JOIN profiles p ON p.id=r.user_id LEFT JOIN effects e ON e.submission_id=s.id LEFT JOIN submission_media m ON m.submission_id=s.id WHERE r.round_id=? ORDER BY rank",
       roundId,
@@ -648,7 +665,7 @@ export async function mutate(action: string, b: any, user: any) {
   }
   if (action === "vote") {
     const r = await one("SELECT * FROM rounds WHERE id=?", b.roundId);
-    if (!r || phase(r) !== "VOTING") throw new Error("Voting is closed.");
+    if (!r || r.finalized || phase(r) !== "VOTING") throw new Error("Voting is closed.");
     if (
       !Array.isArray(b.choices) ||
       (b.choices.length !== 3 && !(b.choices.length === 4 && b.choices[3] === null)) ||
@@ -700,10 +717,13 @@ export async function mutate(action: string, b: any, user: any) {
     return;
   } else if (action === "settings") {
     const rules = validateRules(b.rules);
+    const schedule = rules.schedule === undefined
+      ? (await configuration()).schedule
+      : validateSchedule(rules.schedule);
     ops.push(
       stmt(
         "INSERT INTO settings VALUES(1,?,1) ON CONFLICT(id) DO UPDATE SET data=excluded.data,revision=revision+1",
-        JSON.stringify(rules),
+        JSON.stringify({ ...rules, schedule }),
       ),
     );
   } else if (action === "item") {
@@ -757,6 +777,7 @@ export async function mutate(action: string, b: any, user: any) {
     if (p.state === "published") return;
     if (!today && b.mode && b.mode !== "daily" && b.mode !== "test")
       throw new Error("Choose daily scheduling or an explicit test round.");
+    const rules = await configuration();
     const window =
       !today && b.mode === "test"
         ? {
@@ -765,9 +786,9 @@ export async function mutate(action: string, b: any, user: any) {
             closes: now + 120000,
             ends: now + 240000,
           }
-        : dailyWindow(today ? easternDay(now) : b.day);
+        : dailyWindow(today ? easternDay(now) : b.day, rules.schedule);
     const { opens, closes, ends, dailyDate } = window;
-    if (dailyDate && closes <= now)
+    if (dailyDate && dailyDate < easternDay(now))
       throw new Error("Choose today or a future Eastern date.");
     if (today)
       ops.push(stmt(
@@ -779,10 +800,10 @@ export async function mutate(action: string, b: any, user: any) {
         "INSERT INTO rounds(id,number,prompt,opens,closes,ends,config,placeholder,prompt_id,daily_date) SELECT ?,COALESCE(MAX(number),0)+1,?,?,?,?,?,?,?,? FROM rounds",
         id(),
         p.content,
-        Math.max(opens, now),
+        today ? now : Math.max(opens, now),
         closes,
         ends,
-        JSON.stringify(await configuration()),
+        JSON.stringify(rules),
         p.placeholder,
         p.id,
         dailyDate,
@@ -837,7 +858,7 @@ export async function mutate(action: string, b: any, user: any) {
   } else if (action === "cancel") {
     ops.push(
       stmt(
-        "UPDATE rounds SET cancelled=1 WHERE id=? AND finalized IS NULL",
+        "UPDATE rounds SET cancelled=1 WHERE id=? AND finalized IS NULL AND ends>unixepoch('subsec')*1000",
         b.id,
       ),
     );

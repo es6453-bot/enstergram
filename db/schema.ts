@@ -180,6 +180,7 @@ export const rounds = sqliteTable(
     uniqueIndex("one_daily_round")
       .on(t.dailyDate)
       .where(sql`${t.cancelled} = 0`),
+    index("due_rounds").on(t.ends).where(sql`${t.finalized} IS NULL AND ${t.cancelled}=0`),
   ],
 );
 export const submissions = sqliteTable(

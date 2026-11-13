@@ -63,7 +63,7 @@ test("libSQL applies all migrations once and exposes fractional server timestamp
     assert.equal(
       (await client.execute("SELECT COUNT(*) AS n FROM _app_migrations"))
         .rows[0].n,
-      13,
+      14,
     );
     assert.equal((await migrate(client)).applied, 0);
     const r = await client.execute("SELECT unixepoch('subsec') AS now");
@@ -272,6 +272,38 @@ test("open ballots ignore former downvotes and reject new ones while past rounds
     const { commentPage } = await import("../.test-runtime/platform/comments.mjs");
     await server.mutate("addComment", { submissionId: "open-entry", content: "After results" }, { id: "bob" });
     assert.equal((await commentPage(globalThis.__platformDb, "alice", "open-entry")).comments.length, 1);
+  } finally {
+    client.close();
+  }
+});
+test("a delayed scheduler settles due rounds once after ballots become immutable", async () => {
+  const client = await fresh();
+  try {
+    const { DEFAULTS } = await import("../.test-runtime/platform/rules.mjs");
+    const now = Date.now();
+    await client.batch([
+      "INSERT INTO profiles VALUES('alice','alice','player',0),('bob','bob','player',0)",
+      "INSERT INTO wallets VALUES('alice',0),('bob',0)",
+      { sql: "INSERT INTO rounds(id,number,prompt,opens,closes,ends,config) VALUES('previous',1,'Prompt',?,?,?,?)",
+        args: [now - 60000, now + 60000, now + 120000, JSON.stringify(DEFAULTS)] },
+      "INSERT INTO submissions VALUES('entry','previous','alice','Anonymous until results',0)",
+      "DROP TRIGGER round_snapshot",
+      { sql: "UPDATE rounds SET closes=? WHERE id='previous'", args: [now - 1000] },
+    ], "write");
+    await server.mutate("vote", { roundId: "previous", choices: ["entry", null, null] }, { id: "bob" });
+    const prior = await server.feed("previous", "bob");
+    assert.equal(prior.entries[0].user_id, undefined);
+    assert.equal(prior.entries[0].score, undefined);
+    await server.finalizeDueRounds();
+    assert.equal((await server.one("SELECT COUNT(*) AS n FROM results")).n, 0);
+    await client.execute({ sql: "UPDATE rounds SET ends=? WHERE id='previous'", args: [now - 10] });
+    await assert.rejects(server.mutate("vote", { roundId: "previous", choices: ["entry", null, null] }, { id: "bob" }), /Voting is closed/);
+    await assert.rejects(client.execute("UPDATE ballots SET choices='[null,null,null]'"), /Voting window closed/);
+    await Promise.all([server.finalizeDueRounds(), server.finalizeDueRounds()]);
+    assert.deepEqual((await server.feed("previous", "bob", true)).entries, []);
+    assert.equal((await server.feed("previous", "bob")).entries[0].score, 3);
+    assert.equal((await server.one("SELECT COUNT(*) AS n FROM results")).n, 1);
+    assert.equal((await server.one("SELECT COUNT(*) AS n FROM ledger WHERE kind='voting'")).n, 1);
   } finally {
     client.close();
   }

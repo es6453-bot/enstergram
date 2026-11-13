@@ -20,7 +20,7 @@ export async function GET(request: Request) {
     const url = new URL(request.url);
     return Response.json(
       url.searchParams.has("round")
-        ? await feed(url.searchParams.get("round")!, user.id)
+        ? await feed(url.searchParams.get("round")!, user.id, url.searchParams.get("view") === "vote")
         : await state(user.id),
       { headers: { "Cache-Control": "no-store" } },
     );

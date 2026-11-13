@@ -61,7 +61,7 @@ Names, prompts, prices, effect parameters, tier thresholds, cosmetics and balanc
 
 ## Game guarantees
 
-- The official clock is America/New_York, including daylight saving changes. Daily submissions run 00:00 through 23:59; voting is the next day alongside a new prompt. Voting is not a prerequisite to submitting that day's response.
+- The official clock is America/New_York, including daylight saving changes. Daily submissions open at midnight, voting opens the next midnight, and voting closes at 22:00 Eastern that evening. Players can submit to the new prompt while voting on the previous one.
 - Likes are fictional, non-transferable currency, separate from voting points and Followers. A unique starting grant defaults to 100. No payment integration exists.
 - Eligible submissions and valid ballots earn unique participation receipts. Rewards settle once at finalization. Edits and retries cannot duplicate awards.
 - Purchases, inventory consumption, effects, participation and finalization retain their transactional database boundaries. Immutable ledger/results and no-overdraft protections remain enforced by SQLite/libSQL triggers and constraints.
@@ -75,7 +75,9 @@ Names, prompts, prices, effect parameters, tier thresholds, cosmetics and balanc
 - Daily activity counts once per Eastern date for a valid submission or ballot. Freezes preserve the streak without adding activity days or rewards. Missing a day never deducts Likes, Followers or earned cosmetics.
 - Frozen and missed-day decisions use the versioned settings effective on each day. The default weekly refill is one freeze each Monday, capped at one banked freeze.
 
-Finalization and missed-day reconciliation run on the next authenticated request after their deadlines. Staff can publish a prompt immediately for the current Eastern date or schedule one for a future midnight. Today's submissions close at the end of the Eastern day, and voting runs the next day.
+Staff can set daily competition times in Admin → Economy. Published rounds keep their deadlines when those settings change. Staff can also publish today's prompt immediately.
+
+The production GitHub Actions workflow invokes the server to finalize due rounds using short-lived GitHub OIDC tokens. The job checks every five minutes and can wait for a nearby cutoff. Guest and signed-in results requests also finalize overdue rounds. The database enforces the cutoff, and publication exposes scores and identities only after finalization commits. GitHub scheduled workflows can be delayed or disabled after public repository inactivity. If needed, re-enable **Finalize daily rounds** in the repository's Actions tab.
 
 ## Source map
 

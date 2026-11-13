@@ -1,3 +1,5 @@
+import type { DailySchedule } from "./time";
+
 export const DEFAULTS = {
   startingLikes: 100,
   submissionClout: 10,
@@ -8,7 +10,7 @@ export const DEFAULTS = {
   followers: [100, 60, 40, 25, 15, 5, 0],
   minEntries: 5,
 };
-export type Rules = typeof DEFAULTS;
+export type Rules = typeof DEFAULTS & { schedule?: DailySchedule };
 export const BALLOT_LABELS = ["First favorite", "Second favorite", "Third favorite"];
 // Legacy config keys and effect IDs stay stable for historical round snapshots.
 export function currencyCopy(text: string) {

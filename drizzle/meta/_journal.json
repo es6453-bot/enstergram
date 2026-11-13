@@ -92,6 +92,13 @@
       "when": 1794560059140,
       "tag": "0012_comments_and_positive_ballots",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1794597689317,
+      "tag": "0013_eastern_results_schedule",
+      "breakpoints": true
     }
   ]
 }

@@ -52,6 +52,9 @@ import {
   easternDeadline,
   easternDay,
   nextPhaseDelay,
+  dailyWindow,
+  DEFAULT_SCHEDULE,
+  type DailySchedule,
 } from "../lib/time";
 const icons: any = { Zap, Shield, Briefcase, Type, Sparkles, Image: ImageIcon };
 const effectLabels: any = {
@@ -74,6 +77,21 @@ const benefit = (x: any) =>
 const format = (n: number) => new Intl.NumberFormat("en-US").format(n || 0);
 const date = easternDate;
 const deadlineDate = easternDeadline;
+function Countdown({ deadline, serverNow }: { deadline: number; serverNow: number }) {
+  const [remaining, setRemaining] = useState(deadline - serverNow);
+  useEffect(() => {
+    const offset = serverNow - Date.now();
+    const update = () => setRemaining(deadline - Date.now() - offset);
+    update();
+    const timer = setInterval(update, 1000);
+    return () => clearInterval(timer);
+  }, [deadline, serverNow]);
+  const seconds = Math.max(0, Math.ceil(remaining / 1000));
+  const parts = [Math.floor(seconds / 3600), Math.floor(seconds / 60) % 60, seconds % 60];
+  return <time dateTime={new Date(deadline).toISOString()}>
+    {seconds ? parts.map((value) => String(value).padStart(2, "0")).join(":") + " remaining" : "Closed"}
+  </time>;
+}
 const nav = [
   ["submit", Home, "Today’s discourse"],
   ["vote", ThumbsUp, "Voting booth"],
@@ -206,7 +224,7 @@ export default function Game({ view = "shop" }: { view?: string }) {
     current = rounds.find((r: any) => r.phase === "SUBMISSION"),
     voting = rounds.filter((r: any) => r.phase === "VOTING"),
     completed = rounds.filter((r: any) => r.phase === "RESULTS" && r.finalized),
-    selected = rounds.find((r: any) => r.id === roundId);
+    selected = (view === "vote" ? voting : completed).find((r: any) => r.id === roundId);
   const currentId = current?.id;
   const initializedComposer = useRef("");
   useEffect(() => {
@@ -249,7 +267,8 @@ export default function Game({ view = "shop" }: { view?: string }) {
   useEffect(() => {
     if (!roundId || !["vote", "results"].includes(view)) return;
     let active = true;
-    fetch(`/api/game?round=${encodeURIComponent(roundId)}`)
+    setFeed(null);
+    fetch(`/api/game?round=${encodeURIComponent(roundId)}&view=${view}`)
       .then((r) => r.json() as Promise<any>)
       .then((x) => {
         if (active) {
@@ -822,10 +841,10 @@ export default function Game({ view = "shop" }: { view?: string }) {
                   <div className="info-bar daily-cycle">
                     <Clock size={18} />
                     <div>
-                      <b>Eastern Time · 00:00–23:59 daily</b>
+                      <b>Daily competition · Eastern Time</b>
                       <p>
                         Submit today’s response and vote on yesterday’s round.
-                        New York daylight saving time applies.
+                        Results publish when voting closes.
                       </p>
                       <div className="daily-cycle-actions">
                         {current && view !== "submit" && (
@@ -859,6 +878,7 @@ export default function Game({ view = "shop" }: { view?: string }) {
                         <p>
                           <Clock size={14} /> Submissions close{" "}
                           {deadlineDate(current.closes)} ET
+                          {" · "}<Countdown deadline={current.closes} serverNow={data.serverNow} />
                         </p>
                       </div>
                       <section className="composer panel">
@@ -982,6 +1002,9 @@ export default function Game({ view = "shop" }: { view?: string }) {
                   )
                 ) : view === "vote" ? (
                   <>
+                    {!selected && completed.length > 0 && (
+                      <a className="secondary" href="/results">View results <ArrowRight size={14} /></a>
+                    )}
                     <RoundSelect
                       rounds={voting}
                       value={roundId}
@@ -1000,6 +1023,7 @@ export default function Game({ view = "shop" }: { view?: string }) {
                               {deadlineDate(selected.ends)} ET. Authors, totals,
                               and private ballots stay hidden.
                             </p>
+                            <Countdown deadline={selected.ends} serverNow={data.serverNow} />
                           </div>
                         </div>
                         <div className="vote-grid">
@@ -1372,6 +1396,8 @@ export default function Game({ view = "shop" }: { view?: string }) {
       {modal?.type === "schedule" && (
         <ScheduleEditor
           prompt={modal.prompt}
+          schedule={data.rules.schedule}
+          serverNow={data.serverNow}
           busy={busy}
           close={() => setModal(null)}
           save={(x: any) =>
@@ -1835,6 +1861,25 @@ function Admin({
                 </label>
               ))}
             </div>
+            <h3>Daily schedule · Eastern Time</h3>
+            <p className="help">These times apply to daily rounds published after you save. The voting deadline is also the results time.</p>
+            <div className="form-grid">
+              {([
+                ["submissionOpens", "Submissions open · Day 1"],
+                ["votingOpens", "Submissions close and voting opens · Day 2"],
+                ["resultsAt", "Voting closes and results publish · Day 2"],
+              ] as const).map(([key, label]) => (
+                <label className="form-label" key={key}>
+                  {label}
+                  <input type="time" required value={(rules.schedule ?? DEFAULT_SCHEDULE)[key]}
+                    onChange={(event) => setRules({
+                      ...rules,
+                      schedule: { ...DEFAULT_SCHEDULE, ...rules.schedule, [key]: event.target.value },
+                    })}
+                  />
+                </label>
+              ))}
+            </div>
             <h3>Competition defaults</h3>
             <div className="form-grid">
               {number("Default word limit", "wordLimit")}
@@ -2013,8 +2058,7 @@ function Admin({
             <div>
               <h2>Round control.</h2>
               <p>
-                Deadlines enforce phases automatically. Eligible rounds finalize
-                on the next game request.
+                Results publish automatically when voting closes and scoring finishes.
               </p>
             </div>
             <button
@@ -2035,7 +2079,7 @@ function Admin({
                 <p>
                   Opens {date(r.opens)} ET · submissions close{" "}
                   {deadlineDate(r.closes)} ET · voting ends{" "}
-                  {deadlineDate(r.ends)} ET
+                  {deadlineDate(r.ends)} ET · results follow
                 </p>
                 <small>
                   {r.finalized
@@ -2354,7 +2398,7 @@ function PromptEditor({ prompt, busy, close, save }: any) {
           Mark as placeholder
         </label>
         <p className="help">
-          Publish today to open submissions immediately through 23:59 Eastern.
+          Publish today to open submissions immediately. The round uses the daily voting and results times.
           Use the prompt list to publish a saved draft or schedule a future round.
         </p>
         <button className="secondary full" disabled={busy}>
@@ -2369,10 +2413,18 @@ function PromptEditor({ prompt, busy, close, save }: any) {
     </Modal>
   );
 }
-function ScheduleEditor({ prompt, busy, close, save }: any) {
-  const today = easternDay();
-  const [day, setDay] = useState(prompt.scheduled >= today ? prompt.scheduled : today),
+function ScheduleEditor({ prompt, schedule = DEFAULT_SCHEDULE, serverNow, busy, close, save }: {
+  prompt: { scheduled?: string; content: string };
+  schedule?: DailySchedule;
+  serverNow: number;
+  busy: boolean;
+  close: () => void;
+  save: (values: { mode: string; day?: string }) => void;
+}) {
+  const today = easternDay(serverNow);
+  const [day, setDay] = useState(prompt.scheduled && prompt.scheduled >= today ? prompt.scheduled : today),
     [sandbox, setSandbox] = useState(false);
+  const window = day ? dailyWindow(day, schedule) : null;
   return (
     <Modal title="Publish or schedule a round" close={close}>
       <form
@@ -2394,11 +2446,14 @@ function ScheduleEditor({ prompt, busy, close, save }: any) {
             onChange={(e) => setDay(e.target.value)}
           />
         </label>
-        <div className="info-bar">
+        {!sandbox && window && <div className="info-bar">
           <Clock size={17} />
-          Today’s prompt opens immediately. Future prompts open at 00:00 Eastern.
-          Submissions close at the end of the selected day, and voting runs the next day.
-        </div>
+          <div>
+            <p>Submissions open {day === today && window.opens <= serverNow ? "immediately" : `${date(window.opens)} ET`}.</p>
+            <p>Submissions close and voting opens {date(window.closes)} ET.</p>
+            <p>Voting closes and results publish {date(window.ends)} ET.</p>
+          </div>
+        </div>}
         <label className="checkbox">
           <input
             type="checkbox"
