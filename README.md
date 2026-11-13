@@ -75,7 +75,7 @@ Names, prompts, prices, effect parameters, tier thresholds, cosmetics and balanc
 - Daily activity counts once per Eastern date for a valid submission or ballot. Freezes preserve the streak without adding activity days or rewards. Missing a day never deducts Likes, Followers or earned cosmetics.
 - Frozen and missed-day decisions use the versioned settings effective on each day. The default weekly refill is one freeze each Monday, capped at one banked freeze.
 
-Finalization and missed-day reconciliation run on the next authenticated request after their deadlines. Owner-written daily prompts must be queued in advance; no new prompt is invented when the queue is empty.
+Finalization and missed-day reconciliation run on the next authenticated request after their deadlines. Staff can publish a prompt immediately for the current Eastern date or schedule one for a future midnight. Today's submissions close at the end of the Eastern day, and voting runs the next day.
 
 ## Source map
 

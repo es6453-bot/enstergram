@@ -51,7 +51,6 @@ import {
   easternDate,
   easternDeadline,
   easternDay,
-  nextDay,
   nextPhaseDelay,
 } from "../lib/time";
 const icons: any = { Zap, Shield, Briefcase, Type, Sparkles, Image: ImageIcon };
@@ -1364,7 +1363,10 @@ export default function Game({ view = "shop" }: { view?: string }) {
           prompt={modal.prompt}
           busy={busy}
           close={() => setModal(null)}
-          save={(x: any) => act({ action: "prompt", ...x }, "Prompt saved.")}
+          save={(x: any, publishToday: boolean) => act(
+            { ...x, action: publishToday ? "publishToday" : "prompt" },
+            publishToday ? "Today’s prompt is live." : "Prompt saved.",
+          )}
         />
       )}
       {modal?.type === "schedule" && (
@@ -1375,7 +1377,7 @@ export default function Game({ view = "shop" }: { view?: string }) {
           save={(x: any) =>
             act(
               { action: "publishPrompt", id: modal.prompt.id, ...x },
-              "Round scheduled. Its rules are now snapshotted.",
+              x.day === easternDay() ? "Today’s prompt is live." : "Round scheduled.",
             )
           }
         />
@@ -1627,7 +1629,7 @@ function Admin({
           <div className="section-heading">
             <div>
               <h2>The next big conversation.</h2>
-              <p>Draft, edit, and schedule your own daily prompts.</p>
+              <p>Publish today’s prompt or schedule a future round.</p>
             </div>
             <button
               className="primary"
@@ -1670,7 +1672,7 @@ function Admin({
                   disabled={busy || p.state === "published"}
                   onClick={() => setModal({ type: "schedule", prompt: p })}
                 >
-                  Schedule <ArrowUpRight size={15} />
+                  Publish or schedule <ArrowUpRight size={15} />
                 </button>
                 <button
                   className="icon-button"
@@ -2315,12 +2317,13 @@ function ItemEditor({ item, busy, close, save }: any) {
 function PromptEditor({ prompt, busy, close, save }: any) {
   const [x, setX] = useState(prompt);
   return (
-    <Modal title="Write tomorrow’s discourse." close={close}>
+    <Modal title={x.id ? "Edit prompt" : "New prompt"} close={close}>
       <form
         className="editor-form"
         onSubmit={(e) => {
           e.preventDefault();
-          save(x);
+          const submitter = (e.nativeEvent as SubmitEvent).submitter;
+          save(x, submitter?.getAttribute("value") === "today");
         }}
       >
         <label className="form-label">
@@ -2351,21 +2354,27 @@ function PromptEditor({ prompt, busy, close, save }: any) {
           Mark as placeholder
         </label>
         <p className="help">
-          Saving keeps a draft or planned prompt. Use Schedule to publish its
-          actual round and freeze that round’s rules.
+          Publish today to open submissions immediately through 23:59 Eastern.
+          Use the prompt list to publish a saved draft or schedule a future round.
         </p>
-        <button className="primary full" disabled={busy}>
+        <button className="secondary full" disabled={busy}>
           Save prompt <Check size={16} />
         </button>
+        {!x.id && (
+          <button className="primary full" type="submit" value="today" disabled={busy}>
+            Publish today <ArrowUpRight size={16} />
+          </button>
+        )}
       </form>
     </Modal>
   );
 }
 function ScheduleEditor({ prompt, busy, close, save }: any) {
-  const [day, setDay] = useState(prompt.scheduled || nextDay(easternDay(), 1)),
+  const today = easternDay();
+  const [day, setDay] = useState(prompt.scheduled >= today ? prompt.scheduled : today),
     [sandbox, setSandbox] = useState(false);
   return (
-    <Modal title="Schedule a round." close={close}>
+    <Modal title="Publish or schedule a round" close={close}>
       <form
         className="editor-form"
         onSubmit={(e) => {
@@ -2375,20 +2384,20 @@ function ScheduleEditor({ prompt, busy, close, save }: any) {
       >
         <p>{prompt.content}</p>
         <label className="form-label">
-          Submission date · 00:00–23:59 Eastern
+          Submission date · Eastern Time
           <input
             required={!sandbox}
             type="date"
+            min={today}
+            disabled={sandbox}
             value={day}
             onChange={(e) => setDay(e.target.value)}
           />
         </label>
         <div className="info-bar">
           <Clock size={17} />
-          Submissions open at 00:00 and remain open through 23:59 Eastern on the
-          selected day. Voting runs 00:00–23:59 the next day, alongside that
-          day’s new prompt. Queue one prompt per day in advance; the server
-          calculates all deadlines using New York’s clock.
+          Today’s prompt opens immediately. Future prompts open at 00:00 Eastern.
+          Submissions close at the end of the selected day, and voting runs the next day.
         </div>
         <label className="checkbox">
           <input
@@ -2399,7 +2408,7 @@ function ScheduleEditor({ prompt, busy, close, save }: any) {
           Test-only exception: 2-minute submissions + 2-minute voting
         </label>
         <button className="primary full" disabled={busy}>
-          Schedule & snapshot rules <CalendarDays size={16} />
+          {sandbox ? "Start test round" : day === today ? "Publish today" : "Schedule round"} <CalendarDays size={16} />
         </button>
       </form>
     </Modal>

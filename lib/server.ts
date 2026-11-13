@@ -8,7 +8,7 @@ import {
   requireActive,
   moderatePlayer,
 } from "./access";
-import { dailyWindow, GAME_TIME_ZONE, validateDay } from "./time";
+import { dailyWindow, easternDay, GAME_TIME_ZONE, validateDay } from "./time";
 import { processResponseImage } from "./response-media";
 import { MAX_RESPONSE_IMAGE_BYTES } from "./media-limits";
 import { addComment, removeComment } from "./comments";
@@ -746,32 +746,40 @@ export async function mutate(action: string, b: any, user: any) {
     );
   } else if (action === "deletePrompt") {
     ops.push(stmt("UPDATE prompts SET state='archived' WHERE id=?", b.id));
-  } else if (action === "publishPrompt") {
-    const p = await one("SELECT * FROM prompts WHERE id=?", b.id);
+  } else if (action === "publishPrompt" || action === "publishToday") {
+    const today = action === "publishToday";
+    if (today && (typeof b.content !== "string" || !b.content.trim() || b.content.length > 1000))
+      throw new Error("Enter a prompt up to 1,000 characters.");
+    const p = today
+      ? { id: id(), content: b.content.trim(), placeholder: b.placeholder ? 1 : 0 }
+      : await one("SELECT * FROM prompts WHERE id=? AND state<>'archived'", b.id);
     if (!p) throw new Error("Prompt not found.");
     if (p.state === "published") return;
-    if (b.mode && b.mode !== "daily" && b.mode !== "test")
+    if (!today && b.mode && b.mode !== "daily" && b.mode !== "test")
       throw new Error("Choose daily scheduling or an explicit test round.");
     const window =
-      b.mode === "test"
+      !today && b.mode === "test"
         ? {
             dailyDate: null,
             opens: now,
             closes: now + 120000,
             ends: now + 240000,
           }
-        : dailyWindow(b.day);
+        : dailyWindow(today ? easternDay(now) : b.day);
     const { opens, closes, ends, dailyDate } = window;
-    if (dailyDate && opens < now)
-      throw new Error(
-        "Queue daily prompts before their 00:00 Eastern opening. Choose a future date.",
-      );
+    if (dailyDate && closes <= now)
+      throw new Error("Choose today or a future Eastern date.");
+    if (today)
+      ops.push(stmt(
+        "INSERT INTO prompts(id,content,scheduled,state,placeholder) VALUES(?,?,?,'published',?)",
+        p.id, p.content, dailyDate, p.placeholder,
+      ));
     ops.push(
       stmt(
         "INSERT INTO rounds(id,number,prompt,opens,closes,ends,config,placeholder,prompt_id,daily_date) SELECT ?,COALESCE(MAX(number),0)+1,?,?,?,?,?,?,?,? FROM rounds",
         id(),
         p.content,
-        opens,
+        Math.max(opens, now),
         closes,
         ends,
         JSON.stringify(await configuration()),

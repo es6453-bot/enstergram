@@ -901,7 +901,7 @@ test("daily scheduling calculates deadlines on the server and reserves one Easte
   );
   await assert.rejects(
     server.mutate("publishPrompt", { id: "p3", day: "2020-01-01" }, owner),
-    /Queue daily/,
+    /today or a future Eastern date/,
   );
   await server.mutate("cancel", { id: a.id }, owner);
   await server.mutate("publishPrompt", { id: "p3", day: "2028-03-12" }, owner);
@@ -913,6 +913,33 @@ test("daily scheduling calculates deadlines on the server and reserves one Easte
       .get().n,
     1,
   );
+});
+
+test("staff can publish today's prompt immediately through the normal Eastern deadline", async () => {
+  const raw = bind(fresh());
+  const today = easternDay();
+  const before = Date.now();
+  const expected = dailyWindow(today);
+  await assert.rejects(
+    server.mutate("publishToday", { content: "Forged prompt" }, { id: "bob", role: "owner" }),
+    /Administrator/,
+  );
+  await server.mutate("publishToday", { content: "Launch prompt", day: "2050-01-01" }, { id: "owner" });
+  const active = raw.prepare("SELECT * FROM rounds WHERE daily_date=?").get(today);
+  assert.equal(active.prompt, "Launch prompt");
+  assert.ok(active.opens >= before && active.opens <= Date.now());
+  assert.equal(active.closes, expected.closes);
+  assert.equal(active.ends, expected.ends);
+  assert.equal(phase(active), "SUBMISSION");
+  await assert.rejects(
+    server.mutate("publishToday", { content: "Duplicate" }, { id: "owner" }),
+    /UNIQUE/,
+  );
+  assert.equal(raw.prepare("SELECT COUNT(*) AS n FROM prompts").get().n, 1);
+  await server.mutate("cancel", { id: active.id }, { id: "owner" });
+  await server.mutate("prompt", { id: "draft", content: "Saved draft" }, { id: "owner" });
+  await server.mutate("publishPrompt", { id: "draft", day: today }, { id: "owner" });
+  assert.equal(raw.prepare("SELECT prompt FROM rounds WHERE cancelled=0").get().prompt, "Saved draft");
 });
 
 test("a player can vote on the previous round and submit to the next round simultaneously", async () => {
