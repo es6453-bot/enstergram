@@ -16,17 +16,19 @@ export async function POST(request: Request) {
       algorithms: ["RS256"],
       issuer,
       audience: "https://estergram.vercel.app/api/rounds/finalize",
-      subject: `repo:${repository}:ref:${ref}`,
       requiredClaims: ["exp", "iat"],
       maxTokenAge: "5m",
+      clockTolerance: 30,
     });
     if (
       payload.repository_id !== "1436066967" ||
-      payload.workflow_ref !== `${repository}/.github/workflows/finalize-rounds.yml@${ref}` ||
+      payload.ref !== ref ||
+      String(payload.workflow_ref).toLowerCase() !== `${repository}/.github/workflows/finalize-rounds.yml@${ref}` ||
       !["schedule", "workflow_dispatch"].includes(String(payload.event_name))
     )
       return Response.json({ error: "Scheduler access denied." }, { status: 403, headers });
-  } catch {
+  } catch (error) {
+    console.warn("Scheduler token rejected", error instanceof Error ? error.name : "UnknownError");
     return Response.json({ error: "Invalid scheduler token." }, { status: 401, headers });
   }
   await finalizeDueRounds();

@@ -24,8 +24,16 @@ jobs:
           token=$(jq -er .value <<< "$token_response")
           echo "::add-mask::$token"
           finalize() {
-            curl --silent --show-error --fail --retry 2 --max-time 30 \
-              --request POST --header "Authorization: Bearer $token" "$endpoint"
+            local response status
+            response=$(curl --silent --show-error --retry 2 --max-time 30 \
+              --write-out $'\n%{http_code}' --request POST \
+              --header "Authorization: Bearer $token" "$endpoint")
+            status=${response##*$'\n'}
+            if [[ $status != 200 ]]; then
+              echo "Finalization endpoint returned HTTP $status." >&2
+              return 1
+            fi
+            printf '%s\n' "${response%$'\n'*}"
           }
           result=$(finalize)
           deadline=$(jq -er '.nextDeadline // 0' <<< "$result")
