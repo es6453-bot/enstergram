@@ -1,4 +1,4 @@
-# Estergram — Vercel edition
+# Enstergram — Vercel edition
 
 A daily anonymous writing game with a Likes shop, consumable power-ups, follower tiers, cosmetic profiles, forgiving streaks and an owner dashboard.
 

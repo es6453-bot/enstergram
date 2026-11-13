@@ -394,7 +394,7 @@ export function ProfilePage({ data, busy, act, edit = false }: any) {
   };
   return (
     <main className="profile-main">
-      <div className="eyebrow">YOUR CORNER OF ESTERGRAM</div>
+      <div className="eyebrow">YOUR CORNER OF ENSTERGRAM</div>
       <div className="section-heading">
         <div>
           <h1>{editing ? "Make it feel like you." : "Your online persona."}</h1>

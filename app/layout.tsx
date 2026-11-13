@@ -3,12 +3,13 @@ import "./globals.css";
 import "./social.css";
 
 export const metadata: Metadata = {
-  title: "Estergram — Your 10 words of fame.",
+  title: "Enstergram — Your 10 words of fame.",
+  applicationName: "Enstergram",
   description:
-    "Estergram. Earn Likes, equip your next big idea at The Algorithm™, and join the daily writing competition.",
+    "Enstergram. Earn Likes, equip your next big idea at The Algorithm™, and join the daily writing competition.",
   icons: {
-    icon: "/favicon.svg",
-    shortcut: "/favicon.svg",
+    icon: { url: "/enstergram-icon.png", type: "image/png", sizes: "64x64" },
+    apple: { url: "/enstergram-touch-icon.png", sizes: "180x180" },
   },
 };
 

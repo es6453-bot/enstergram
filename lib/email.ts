@@ -25,9 +25,9 @@ export async function sendSignInEmail(
       from: process.env.AUTH_EMAIL_FROM,
       to: [email],
       subject: linking
-        ? "Link your email to Estergram"
-        : "Your Estergram sign-in link",
-      text: `${linking ? "Confirm this email for your current Estergram account" : "Continue to Estergram"}:\n\n${url}\n\nThis link expires in 15 minutes and works once. ${linking ? "Open it in the same browser where you requested it." : "If you didn’t request it, ignore this email."}`,
+        ? "Link your email to Enstergram"
+        : "Your Enstergram sign-in link",
+      text: `${linking ? "Confirm this email for your current Enstergram account" : "Continue to Enstergram"}:\n\n${url}\n\nThis link expires in 15 minutes and works once. ${linking ? "Open it in the same browser where you requested it." : "If you didn’t request it, ignore this email."}`,
     }),
   });
   if (!response.ok)

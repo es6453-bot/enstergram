@@ -46,7 +46,7 @@ export default async function Verify({
         Another way in.
       </h1>
       <p>
-        Confirm this email for your current Estergram account. Your progress and
+        Confirm this email for your current Enstergram account. Your progress and
         existing sign-in stay with you.
       </p>
       <form action={confirm}>

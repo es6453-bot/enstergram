@@ -82,7 +82,7 @@ export async function grantStartingLikes(userId?: string) {
   await stmt(
     `INSERT OR IGNORE INTO ledger(id,user_id,round_id,kind,amount,note,created)
      SELECT 'starting-likes:v1:' || w.user_id,w.user_id,NULL,'starting',?,
-       'Starting Likes · welcome to Estergram',?
+       'Starting Likes · welcome to Enstergram',?
      FROM wallets w WHERE (? IS NULL OR w.user_id=?)
        AND NOT EXISTS(SELECT 1 FROM ledger l WHERE l.user_id=w.user_id AND l.kind='starting')`,
     rules.startingLikes,
@@ -102,7 +102,7 @@ export async function initializeLikes() {
     stmt(
       `INSERT OR IGNORE INTO ledger(id,user_id,round_id,kind,amount,note,created)
       SELECT 'starting-likes:v1:' || w.user_id,w.user_id,NULL,'starting',100,
-        'Starting Likes · welcome to Estergram',? FROM wallets w
+        'Starting Likes · welcome to Enstergram',? FROM wallets w
       WHERE NOT EXISTS(SELECT 1 FROM ledger l WHERE l.user_id=w.user_id AND l.kind='starting')`,
       now,
     ),

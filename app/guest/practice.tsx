@@ -2,7 +2,8 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 import Link from "next/link";
 import { useState, useEffect } from "react";
-import { Flame, ArrowUpRight } from "lucide-react";
+import { ArrowUpRight } from "lucide-react";
+import { BrandMark } from "../brand-mark";
 import { words, hasLongWord, MAX_WORD_CHARACTERS } from "../../lib/rules";
 import { ResponseImage } from "../response-image";
 import { easternDeadline } from "../../lib/time";
@@ -39,8 +40,8 @@ export default function Guest({ data }: { data: GuestData }) {
     <div className="guest-page">
       <header className="guest-header">
         <Link className="brand" href="/">
-          <Flame fill="currentColor" />
-          <span className="brand-name">Estergram</span>
+          <BrandMark />
+          <span className="brand-name">Enstergram</span>
         </Link>
         <Link className="primary" href="/signin">
           Join the game <ArrowUpRight size={16} />

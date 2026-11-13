@@ -46,6 +46,7 @@ import {
 import { words, hasLongWord, MAX_WORD_CHARACTERS, EFFECTS, currencyCopy, BALLOT_LABELS } from "../lib/rules";
 import { MAX_RESPONSE_IMAGE_BYTES, RESPONSE_IMAGE_ACCEPT } from "../lib/media-limits";
 import { ResponseImage } from "./response-image";
+import { BrandMark } from "./brand-mark";
 import { ResponseComments } from "./response-comments";
 import {
   easternDate,
@@ -352,10 +353,8 @@ export default function Game({ view = "shop" }: { view?: string }) {
       </nav>
       <aside className={`sidebar ${mobile ? "open" : ""}`}>
         <a className="brand" href="/shop">
-          <span>
-            <Flame fill="currentColor" size={27} />
-          </span>
-          <span className="brand-name">Estergram</span>
+          <BrandMark />
+          <span className="brand-name">Enstergram</span>
         </a>
         <p className="tagline">Your 10 words of fame.</p>
         <div className="nav-label">YOUR DAILY DOSE</div>
@@ -483,7 +482,7 @@ export default function Game({ view = "shop" }: { view?: string }) {
         {error ? (
           <main className="status-page">
             <Flame size={38} />
-            <h1>Welcome to Estergram.</h1>
+            <h1>Welcome to Enstergram.</h1>
             <p>{error}</p>
             <a className="primary" href="/signin" target="_top">
               Continue to sign in <ArrowRight size={16} />
@@ -1200,7 +1199,7 @@ export default function Game({ view = "shop" }: { view?: string }) {
           </>
         )}
         <footer className="site-footer">
-          <span>© Estergram 2026</span>
+          <span>© Enstergram 2026</span>
           <span>A fictional social experiment. Have a little fun with it.</span>
           <span>
             YOUR 10 WORDS OF FAME. <span className="pink">✦</span>
