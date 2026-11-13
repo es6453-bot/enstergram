@@ -27,6 +27,7 @@ before(async () => {
     "access",
     "media-limits",
     "response-media",
+    "comments",
     "server",
   ]) {
     let code = readFileSync(`lib/${name}.ts`, "utf8")
@@ -35,7 +36,7 @@ before(async () => {
         "const database=()=>globalThis.__platformDb;",
       )
       .replace(
-        /from\s*["']\.\/(rules|time|progression|social-seed|social|identity-policy|access|response-media|media-limits)["']/g,
+        /from\s*["']\.\/(rules|time|progression|social-seed|social|identity-policy|access|response-media|media-limits|comments)["']/g,
         (_, moduleName) => `from './${moduleName}.mjs'`,
       );
     writeFileSync(
@@ -62,7 +63,7 @@ test("libSQL applies all migrations once and exposes fractional server timestamp
     assert.equal(
       (await client.execute("SELECT COUNT(*) AS n FROM _app_migrations"))
         .rows[0].n,
-      12,
+      13,
     );
     assert.equal((await migrate(client)).applied, 0);
     const r = await client.execute("SELECT unixepoch('subsec') AS now");
@@ -192,6 +193,85 @@ test("GIF power-up spends inventory once and exposes media only in the appropria
     assert.equal(results.entries[0].bonus, 0);
     assert.equal(results.entries[0].has_media, 1);
     assert.equal((await readResponseImage(db, entry.id)).mime, "image/webp");
+  } finally {
+    client.close();
+  }
+});
+test("anonymous comments support multiple pages, enforce round visibility, and allow owners and staff to remove them", async () => {
+  const client = await fresh();
+  try {
+    const { commentPage } = await import("../.test-runtime/platform/comments.mjs");
+    const now = Date.now();
+    await client.batch([
+      "INSERT INTO profiles VALUES('alice','alice','player',0),('bob','bob','player',0),('staff','staff','player',0)",
+      "INSERT INTO auth_identities VALUES('google','staff-subject','staff',1)",
+      "INSERT INTO google_accounts VALUES('staff-subject','staff','staff@example.com',1)",
+      "INSERT INTO staff_roles VALUES('staff','owner','staff-subject','staff',1)",
+      { sql: "INSERT INTO rounds(id,number,prompt,opens,closes,ends,config) VALUES('round',1,'Prompt',?,?,?,'{}')", args: [now - 1000, now + 60_000, now + 120_000] },
+      "INSERT INTO submissions VALUES('entry','round','alice','My response',0)",
+    ], "write");
+    const db = globalThis.__platformDb;
+    const add = (content) => server.mutate("addComment", { submissionId: "entry", content }, { id: "bob" });
+    const remove = (commentId, id) => server.mutate("removeComment", { commentId }, { id });
+    assert.equal(await commentPage(db, "bob", "entry"), null);
+    await assert.rejects(add("Private"), /unavailable/);
+    await client.execute("DROP TRIGGER round_snapshot");
+    await client.execute({ sql: "UPDATE rounds SET closes=? WHERE id='round'", args: [Date.now() - 50] });
+    await assert.rejects(add(" "), /up to 1000/);
+    for (let i = 1; i <= 25; i++) await add(`Comment ${i}`);
+    const first = await commentPage(db, "alice", "entry");
+    assert.equal(first.comments.length, 20);
+    assert.deepEqual(first.comments[0], { id: 25, content: "Comment 25", own: false, canRemove: false });
+    const older = await commentPage(db, "bob", "entry", first.next);
+    assert.equal(older.comments.length, 5);
+    assert.equal(older.comments[0].own, true);
+    assert.equal(older.next, null);
+    await assert.rejects(remove(25, "alice"), /could not be removed/);
+    await remove(25, "bob");
+    assert.equal((await commentPage(db, "staff", "entry")).comments[0].canRemove, true);
+    await remove(24, "staff");
+    assert.equal((await commentPage(db, "alice", "entry")).comments[0].id, 23);
+    await client.execute("UPDATE rounds SET cancelled=1");
+    assert.equal(await commentPage(db, "bob", "entry"), null);
+    await assert.rejects(add("Cancelled"), /unavailable/);
+    assert.equal((await server.one("SELECT COUNT(*) AS n FROM receipts")).n, 0);
+  } finally {
+    client.close();
+  }
+});
+test("open ballots ignore former downvotes and reject new ones while past rounds retain their scores", async () => {
+  const client = await fresh();
+  try {
+    const { DEFAULTS } = await import("../.test-runtime/platform/rules.mjs");
+    const now = Date.now();
+    const rules = JSON.stringify({ ...DEFAULTS, votePoints: [3, 2, 1, -1] });
+    await client.batch([
+      "INSERT INTO profiles VALUES('alice','alice','player',0),('bob','bob','player',0)",
+      "INSERT INTO wallets VALUES('alice',0),('bob',0)",
+      "DROP TRIGGER ballot_positive_insert",
+      "DROP TRIGGER round_snapshot",
+      ...["open", "past"].flatMap((round) => [
+        { sql: "INSERT INTO rounds(id,number,prompt,opens,closes,ends,config) VALUES(?,1,'Prompt',?,?,?,?)", args: [round, now - 200_000, now + 60_000, now + 120_000, rules] },
+        { sql: "INSERT INTO submissions VALUES(?,?, 'alice','Response',0)", args: [`${round}-entry`, round] },
+        { sql: "UPDATE rounds SET closes=? WHERE id=?", args: [now - 100_000, round] },
+        { sql: "INSERT INTO ballots VALUES(?,?,'bob',?,0)", args: [round, round, JSON.stringify([null, null, null, `${round}-entry`])] },
+      ]),
+      { sql: "UPDATE rounds SET ends=? WHERE id='past'", args: [now - 60_000] },
+    ], "write");
+    await assert.rejects(server.mutate("vote", {
+      roundId: "open", choices: [null, null, null, "open-entry"],
+    }, { id: "bob" }), /three favorites/);
+    assert.deepEqual(JSON.parse((await server.feed("open", "bob")).ballot.choices), [null, null, null]);
+    await client.execute({ sql: "UPDATE economy_updates SET created=? WHERE id='positive-ballots-v1'", args: [now - 30_000] });
+    await client.execute({ sql: "UPDATE rounds SET ends=? WHERE id='open'", args: [now - 1] });
+    const open = (await server.feed("open", "bob")).entries[0];
+    const past = (await server.feed("past", "bob")).entries[0];
+    assert.equal(open.score, 0);
+    assert.deepEqual(JSON.parse(open.breakdown).counts, [0, 0, 0]);
+    assert.equal(past.score, -1);
+    const { commentPage } = await import("../.test-runtime/platform/comments.mjs");
+    await server.mutate("addComment", { submissionId: "open-entry", content: "After results" }, { id: "bob" });
+    assert.equal((await commentPage(globalThis.__platformDb, "alice", "open-entry")).comments.length, 1);
   } finally {
     client.close();
   }
@@ -354,7 +434,7 @@ test("GitHub access defaults to owner-only and uses stable numeric verified subj
 async function snapshotOf(client) {
   const names = (
     await client.execute(
-      "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT IN ('_app_migrations','auth_identities','auth_users','player_handles','auth_verification_tokens','auth_link_tokens','auth_rate_limits','google_accounts','staff_roles','admin_invitations','player_suspensions','submission_media')",
+      "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT IN ('_app_migrations','auth_identities','auth_users','player_handles','auth_verification_tokens','auth_link_tokens','auth_rate_limits','google_accounts','staff_roles','admin_invitations','player_suspensions','submission_media','response_comments')",
     )
   ).rows.map((x) => x.name);
   const tables = {};

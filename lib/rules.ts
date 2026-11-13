@@ -4,11 +4,12 @@ export const DEFAULTS = {
   votingClout: 5,
   podiumClout: [30, 20, 10],
   wordLimit: 10,
-  votePoints: [3, 2, 1, -1],
+  votePoints: [3, 2, 1],
   followers: [100, 60, 40, 25, 15, 5, 0],
   minEntries: 5,
 };
 export type Rules = typeof DEFAULTS;
+export const BALLOT_LABELS = ["First favorite", "Second favorite", "Third favorite"];
 // Legacy config keys and effect IDs stay stable for historical round snapshots.
 export function currencyCopy(text: string) {
   return text.replace(/\bclout\b/gi, (word) =>
@@ -22,7 +23,6 @@ export function currencyCopy(text: string) {
 export const EFFECTS = [
   "word_limit",
   "positive_multiplier",
-  "downvote_shield",
   "clout_multiplier",
   "media_response",
 ] as const;
@@ -62,10 +62,10 @@ export function phase(
 }
 export function transform(counts: number[], points: number[], effect?: Effect) {
   const positive = counts.slice(0, 3).reduce((s, c, i) => s + c * points[i], 0);
-  const negative = counts[3] * points[3];
+  const negative = (counts[3] ?? 0) * (points[3] ?? 0);
   const raw = positive + negative;
   const shield =
-    effect?.type === "downvote_shield"
+    effect?.type === "downvote_shield" && counts.length === 4 && points[3] < 0
       ? Math.min(counts[3], effect.parameter) * -points[3]
       : 0;
   const boost =
@@ -111,10 +111,9 @@ export function validateRules(x: Rules) {
     x.wordLimit > 100 ||
     x.minEntries < 5 ||
     x.podiumClout.length !== 3 ||
-    x.votePoints.length !== 4 ||
+    x.votePoints.length !== 3 ||
     x.followers.length !== 7 ||
-    x.votePoints.slice(0, 3).some((n) => n < 0) ||
-    x.votePoints[3] > 0 ||
+    x.votePoints.some((n) => n < 0) ||
     x.podiumClout.some((n) => n < 0) ||
     x.followers.some((n) => n < 0)
   )

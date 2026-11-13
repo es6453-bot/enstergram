@@ -11,6 +11,7 @@ import {
 import { dailyWindow, GAME_TIME_ZONE, validateDay } from "./time";
 import { processResponseImage } from "./response-media";
 import { MAX_RESPONSE_IMAGE_BYTES } from "./media-limits";
+import { addComment, removeComment } from "./comments";
 import {
   socialState,
   socialMutation,
@@ -20,6 +21,7 @@ import {
 } from "./social";
 import {
   DEFAULTS,
+  BALLOT_LABELS,
   Rules,
   phase,
   transform,
@@ -122,7 +124,11 @@ export async function configuration(): Promise<Rules> {
     (await one("SELECT data FROM settings WHERE id=1"))?.data ||
       JSON.stringify(DEFAULTS),
   );
-  return { ...DEFAULTS, ...stored };
+  return {
+    ...DEFAULTS,
+    ...stored,
+    votePoints: (stored.votePoints ?? DEFAULTS.votePoints).slice(0, BALLOT_LABELS.length),
+  };
 }
 export async function seed(actor: string) {
   const items = [
@@ -138,20 +144,11 @@ export async function seed(actor: string) {
     [
       "algorithm-boost",
       "Algorithm Boost",
-      "Give a good take a bigger stage. Double positive voting points; downvotes stay the same.",
+      "Give a good take a bigger stage. Double your voting points.",
       "Zap",
       200,
       "positive_multiplier",
       2,
-    ],
-    [
-      "pr-team",
-      "PR Team",
-      "A little damage control. Negate the first downvote on your chosen submission.",
-      "Shield",
-      100,
-      "downvote_shield",
-      1,
     ],
     [
       "brand-deal",
@@ -204,6 +201,10 @@ export async function seed(actor: string) {
 export async function finalize(r: any) {
   if (r.finalized || phase(r) !== "RESULTS") return;
   const rules: Rules = JSON.parse(r.config);
+  const cutover = await one("SELECT created FROM economy_updates WHERE id='positive-ballots-v1'");
+  const votePoints = r.ends <= cutover?.created
+    ? rules.votePoints
+    : rules.votePoints.slice(0, BALLOT_LABELS.length);
   const entries = await all("SELECT * FROM submissions WHERE round_id=?", r.id);
   const ballots = await all(
     "SELECT choices FROM ballots WHERE round_id=?",
@@ -212,16 +213,16 @@ export async function finalize(r: any) {
   const effects = await all("SELECT * FROM effects WHERE round_id=?", r.id);
   const scores = entries
     .map((s) => {
-      const counts = [0, 0, 0, 0];
+      const counts = votePoints.map(() => 0);
       for (const b of ballots)
-        JSON.parse(b.choices).forEach((v: string | null, i: number) => {
+        JSON.parse(b.choices).slice(0, counts.length).forEach((v: string | null, i: number) => {
           if (v === s.id) counts[i]++;
         });
       return {
         ...s,
         ...transform(
           counts,
-          rules.votePoints,
+          votePoints,
           effects.find((e) => e.submission_id === s.id),
         ),
       };
@@ -433,7 +434,7 @@ export async function feed(roundId: string, userId: string) {
   if (phase(r) !== "VOTING") return { entries: [] };
   // Only opaque submission IDs, content and public effect snapshots cross this boundary.
   const entries = await all(
-    "SELECT s.id,s.content,e.name AS effect_name,e.type AS effect_type,e.parameter,m.submission_id IS NOT NULL AS has_media FROM submissions s LEFT JOIN effects e ON e.submission_id=s.id LEFT JOIN submission_media m ON m.submission_id=s.id WHERE s.round_id=? AND s.user_id<>?",
+    "SELECT s.id,s.content,e.name AS effect_name,e.type AS effect_type,e.parameter,m.submission_id IS NOT NULL AS has_media FROM submissions s LEFT JOIN effects e ON e.submission_id=s.id AND e.type<>'downvote_shield' LEFT JOIN submission_media m ON m.submission_id=s.id WHERE s.round_id=? AND s.user_id<>?",
     roundId,
     userId,
   );
@@ -453,13 +454,16 @@ export async function feed(roundId: string, userId: string) {
     })),
   );
   shuffled.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+  const ballot = await one(
+    "SELECT choices FROM ballots WHERE round_id=? AND user_id=?",
+    roundId,
+    userId,
+  );
   return {
     entries: shuffled.map((s) => s.entry),
-    ballot: await one(
-      "SELECT choices FROM ballots WHERE round_id=? AND user_id=?",
-      roundId,
-      userId,
-    ),
+    ballot: ballot
+      ? { choices: JSON.stringify(JSON.parse(ballot.choices).slice(0, BALLOT_LABELS.length)) }
+      : null,
   };
 }
 export async function submitMedia(form: FormData, userId: string) {
@@ -533,6 +537,8 @@ export async function mutate(action: string, b: any, user: any) {
   if (action === "refresh") {
     return;
   }
+  if (action === "addComment") return addComment(db(), u, b.submissionId, b.content);
+  if (action === "removeComment") return removeComment(db(), u, b.commentId);
   if (await socialMutation(db(), action, b, user)) return;
   if (action === "purchase") {
     if (typeof b.key !== "string" || b.key.length > 100)
@@ -645,11 +651,12 @@ export async function mutate(action: string, b: any, user: any) {
     if (!r || phase(r) !== "VOTING") throw new Error("Voting is closed.");
     if (
       !Array.isArray(b.choices) ||
-      b.choices.length !== 4 ||
+      (b.choices.length !== 3 && !(b.choices.length === 4 && b.choices[3] === null)) ||
       b.choices.some((v: any) => v !== null && typeof v !== "string")
     )
-      throw new Error("Choose up to four ranked responses.");
-    const choices = b.choices.filter(Boolean);
+      throw new Error("Choose up to three favorites.");
+    const ranked = b.choices.slice(0, BALLOT_LABELS.length);
+    const choices = ranked.filter(Boolean);
     if (!choices.length || new Set(choices).size !== choices.length)
       throw new Error("Select at least one response, with no repeats.");
     for (const sid of choices) {
@@ -666,7 +673,7 @@ export async function mutate(action: string, b: any, user: any) {
         id(),
         r.id,
         u,
-        JSON.stringify(b.choices),
+        JSON.stringify(ranked),
         now,
       ),
       stmt(

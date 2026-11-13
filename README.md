@@ -66,7 +66,9 @@ Names, prompts, prices, effect parameters, tier thresholds, cosmetics and balanc
 - Eligible submissions and valid ballots earn unique participation receipts. Rewards settle once at finalization. Edits and retries cannot duplicate awards.
 - Purchases, inventory consumption, effects, participation and finalization retain their transactional database boundaries. Immutable ledger/results and no-overdraft protections remain enforced by SQLite/libSQL triggers and constraints.
 - Each whitespace-separated token in a new or edited text response can have up to 20 characters, including dashes and underscores. Word Expansion increases the word count only.
-- Supported power-up effects include word limit, downvote shield, positive-point multiplier, round-Likes multiplier and image responses. Each player has one activation slot per round.
+- Supported power-up effects include word limit, positive-point multiplier, round-Likes multiplier and image responses. Each player has one activation slot per round.
+- Ballots offer three ranked favorites. The downvote and PR Team power-up are retired. Rounds that finished before the change keep their original scoring.
+- Signed-in players can post anonymous comments on response cards during voting and after finalization. Threads support any number of comments and load 20 at a time. Players can delete their own comments and staff can remove any comment.
 - GIF Response lets a player upload a GIF, PNG, JPEG or WebP up to 2 MB as their entry. The first successful upload consumes one item. Replacements are free until submissions close. The server re-encodes images without metadata and serves them on the same origin, first to the author, then to eligible signed-in viewers during voting, and publicly once results are finalized.
 - Round rules and activated effects are immutable snapshots. New balance edits do not rewrite finalized scores or completed transactions.
 - Active voting exposes only opaque response IDs, content and applicable competitive effects. Decorated profiles appear only on one's own profile and finalized results.

@@ -16,7 +16,7 @@ export async function restoreSnapshot(client, snapshot, ownerSubject) {
   const sourceNames = Object.keys(snapshot.tables);
   const authTables = new Set(["auth_identities","auth_users","player_handles","auth_verification_tokens","auth_link_tokens","auth_rate_limits","google_accounts","staff_roles","admin_invitations","player_suspensions"]);
   const expected = targetTables.filter(
-    (name) => !authTables.has(name) && name !== "submission_media",
+    (name) => !authTables.has(name) && !["submission_media", "response_comments"].includes(name),
   );
   if (
     sourceNames.length !== expected.length ||
@@ -80,7 +80,11 @@ export async function restoreSnapshot(client, snapshot, ownerSubject) {
         )
         .join(" UNION ALL "),
     );
-    if (counts.rows.some((x) => x.count !== 0))
+    const updates = await transaction.execute("SELECT id FROM economy_updates");
+    if (
+      updates.rows.some((row) => row.id !== "positive-ballots-v1") ||
+      counts.rows.some((x) => x.name !== "economy_updates" && x.count !== 0)
+    )
       throw new Error(
         "Restore requires an empty migrated database. Existing game data will never be overwritten or merged automatically.",
       );
@@ -99,9 +103,11 @@ export async function restoreSnapshot(client, snapshot, ownerSubject) {
         columns = table.columns;
       const sql = `INSERT INTO ${quote(name)}(${columns.map(quote).join(",")}) VALUES(${columns.map(() => "?").join(",")})`;
       for (const row of table.rows)
-        inserts.push({ sql, args: columns.map((column) => row[column]) });
+        if (name !== "economy_updates" || row.id !== "positive-ballots-v1")
+          inserts.push({ sql, args: columns.map((column) => row[column]) });
     }
     if (inserts.length) await transaction.batch(inserts);
+    await transaction.execute("UPDATE catalog SET enabled=0,revision=revision+1 WHERE effect='downvote_shield' AND enabled=1");
     await transaction.execute(
       `INSERT OR IGNORE INTO catalog(id,name,description,icon,cost,effect,parameter,placeholder)
        VALUES('gif-response','GIF Response','Play a GIF or image in place of a text response.','Image',50,'media_response',1,0)`,

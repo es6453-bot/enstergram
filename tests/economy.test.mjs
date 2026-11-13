@@ -41,7 +41,8 @@ const schema =
   readFileSync("drizzle/0008_vercel_identity_links.sql", "utf8") +
   readFileSync("drizzle/0009_frictionless_auth.sql", "utf8") +
   readFileSync("drizzle/0010_staff_roles.sql", "utf8") +
-  readFileSync("drizzle/0011_submission_media.sql", "utf8");
+  readFileSync("drizzle/0011_submission_media.sql", "utf8") +
+  readFileSync("drizzle/0012_comments_and_positive_ballots.sql", "utf8");
 class Adapter {
   constructor(raw) {
     this.raw = raw;
@@ -103,7 +104,7 @@ function fresh(path = ":memory:") {
   for (const [id, effect, cost, parameter] of [
     ["word", "word_limit", 80, 15],
     ["boost", "positive_multiplier", 200, 2],
-    ["shield", "downvote_shield", 100, 1],
+    ["second-word", "word_limit", 100, 16],
     ["brand", "clout_multiplier", 120, 2],
   ])
     raw
@@ -168,9 +169,10 @@ before(async () => {
     "access",
     "media-limits",
     "response-media",
+    "comments",
   ]) {
     const source = readFileSync(`lib/${moduleName}.ts`, "utf8").replace(
-      /from\s*["']\.\/(time|progression|social-seed|access|media-limits)["']/g,
+      /from\s*["']\.\/(time|progression|social-seed|access|media-limits|comments)["']/g,
       (_, name) => `from './${name}.mjs'`,
     );
     writeFileSync(
@@ -187,7 +189,7 @@ before(async () => {
     .replace(/from\s*['"]\.\/rules['"]/, "from './rules.mjs'")
     .replace(/from\s*['"]\.\/time['"]/, "from './time.mjs'")
     .replace(/from\s*['"]\.\/social['"]/, "from './social.mjs'")
-    .replace(/from\s*['"]\.\/(response-media|media-limits)['"]/g, (_, name) => `from './${name}.mjs'`)
+    .replace(/from\s*['"]\.\/(response-media|media-limits|comments)['"]/g, (_, name) => `from './${name}.mjs'`)
     .replace(
       /from\s*['"]\.\/identity-policy['"]/,
       "from './identity-policy.mjs'",
@@ -250,7 +252,7 @@ test("positive multiplication leaves all negative points intact", () => {
     },
   );
   assert.equal(
-    transform([0, 0, 0, 4], DEFAULTS.votePoints, {
+    transform([0, 0, 0, 4], [3, 2, 1, -1], {
       type: "positive_multiplier",
       parameter: 2,
     }).score,
@@ -259,14 +261,14 @@ test("positive multiplication leaves all negative points intact", () => {
 });
 test("PR Team negates only the permitted downvote amount", () => {
   assert.equal(
-    transform([0, 0, 0, 4], DEFAULTS.votePoints, {
+    transform([0, 0, 0, 4], [3, 2, 1, -1], {
       type: "downvote_shield",
       parameter: 1,
     }).score,
     -3,
   );
   assert.equal(
-    transform([1, 0, 0, 0], DEFAULTS.votePoints, {
+    transform([1, 0, 0, 0], [3, 2, 1, -1], {
       type: "downvote_shield",
       parameter: 1,
     }).bonus,
@@ -385,7 +387,7 @@ test("activation consumes exactly once, tracks submission, snapshots parameters"
     15,
   );
   await assert.rejects(
-    server.mutate("activate", { ...b, itemId: "shield" }, { id: "alice" }),
+    server.mutate("activate", { ...b, itemId: "second-word" }, { id: "alice" }),
     /already used/,
   );
 });
@@ -393,27 +395,27 @@ test("conflicting, unauthorized, disabled, and late activations fail", async () 
   const raw = bind(fresh());
   round(raw);
   submit(raw);
-  stock(raw, "alice", "shield");
-  stock(raw, "bob", "shield");
+  stock(raw, "alice", "second-word");
+  stock(raw, "bob", "second-word");
   await assert.rejects(
     server.mutate(
       "activate",
-      { revision: 1, roundId: "r", submissionId: "r:alice", itemId: "shield" },
+      { revision: 1, roundId: "r", submissionId: "r:alice", itemId: "second-word" },
       { id: "bob" },
     ),
     /unauthorized/,
   );
-  raw.exec("UPDATE catalog SET enabled=0 WHERE id='shield'");
+  raw.exec("UPDATE catalog SET enabled=0 WHERE id='second-word'");
   await assert.rejects(
     server.mutate(
       "activate",
-      { revision: 1, roundId: "r", submissionId: "r:alice", itemId: "shield" },
+      { revision: 1, roundId: "r", submissionId: "r:alice", itemId: "second-word" },
       { id: "alice" },
     ),
     /unavailable/,
   );
   round(raw, "closed", "VOTING");
-  stock(raw, "cara", "shield");
+  stock(raw, "cara", "second-word");
   assert.equal(
     raw.prepare("SELECT SUM(quantity) AS n FROM inventory").get().n,
     3,
@@ -495,7 +497,7 @@ test("ballots allow partial edits, reject repeats and self-votes, anonymous feed
     "content",
     "effect_name",
     "effect_type",
-      "has_media",
+    "has_media",
     "id",
     "parameter",
   ]);
@@ -739,7 +741,7 @@ test("existing players receive exactly one added 100-Like grant without resettin
     6,
   );
   assert.equal(
-    raw.prepare("SELECT count(*) AS n FROM economy_updates").get().n,
+    raw.prepare("SELECT count(*) AS n FROM economy_updates WHERE id='likes-start-v1'").get().n,
     1,
   );
   assert.equal(

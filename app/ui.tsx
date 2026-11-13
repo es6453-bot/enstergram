@@ -43,9 +43,10 @@ import {
   Loader2,
   Image as ImageIcon,
 } from "lucide-react";
-import { words, hasLongWord, MAX_WORD_CHARACTERS, EFFECTS, currencyCopy } from "../lib/rules";
+import { words, hasLongWord, MAX_WORD_CHARACTERS, EFFECTS, currencyCopy, BALLOT_LABELS } from "../lib/rules";
 import { MAX_RESPONSE_IMAGE_BYTES, RESPONSE_IMAGE_ACCEPT } from "../lib/media-limits";
 import { ResponseImage } from "./response-image";
+import { ResponseComments } from "./response-comments";
 import {
   easternDate,
   easternDeadline,
@@ -67,7 +68,7 @@ const benefit = (x: any) =>
     : x.effect === "positive_multiplier"
       ? `${x.parameter}× positive points`
       : x.effect === "downvote_shield"
-        ? `Block ${x.parameter} downvote${x.parameter === 1 ? "" : "s"}`
+        ? "Retired power-up"
         : x.effect === "media_response"
           ? "Submit a GIF or image"
           : `${x.parameter}× round Likes`;
@@ -146,7 +147,6 @@ export default function Game({ view = "shop" }: { view?: string }) {
     [feed, setFeed] = useState<any>(null),
     [roundId, setRoundId] = useState(""),
     [choices, setChoices] = useState<(string | null)[]>([
-      null,
       null,
       null,
       null,
@@ -256,7 +256,7 @@ export default function Game({ view = "shop" }: { view?: string }) {
         if (active) {
           setFeed(x);
           setChoices(
-            x.ballot ? JSON.parse(x.ballot.choices) : [null, null, null, null],
+            x.ballot ? JSON.parse(x.ballot.choices).slice(0, BALLOT_LABELS.length) : [null, null, null],
           );
         }
       })
@@ -955,14 +955,18 @@ export default function Game({ view = "shop" }: { view?: string }) {
                         <Zap size={22} />
                         <div>
                           <h3>
-                            {activeEffect
-                              ? `${currencyCopy(activeEffect.name)} is active.`
-                              : "Give this take an advantage."}
+                            {activeEffect?.type === "downvote_shield"
+                              ? "PR Team has been retired."
+                              : activeEffect
+                                ? `${currencyCopy(activeEffect.name)} is active.`
+                                : "Give this take an advantage."}
                           </h3>
                           <p>
-                            {activeEffect
-                              ? `One item consumed. This round’s activation slot is used. ${benefit({ ...activeEffect, effect: activeEffect.type })}.`
-                              : "Save your text response before activating a text power-up. With a GIF Response in your bag, you can upload an image directly."}
+                            {activeEffect?.type === "downvote_shield"
+                              ? "You can still submit a text response this round."
+                              : activeEffect
+                                ? `One item consumed. This round’s activation slot is used. ${benefit({ ...activeEffect, effect: activeEffect.type })}.`
+                                : "Save your text response before activating a text power-up. With a GIF Response in your bag, you can upload an image directly."}
                           </p>
                         </div>
                         <a className="secondary" href="/inventory">
@@ -1017,17 +1021,13 @@ export default function Game({ view = "shop" }: { view?: string }) {
                                     {s.effect_type !== "media_response" && `: ${s.parameter}`}
                                   </span>
                                 )}
+                                <ResponseComments submissionId={s.id} />
                               </div>
                             ))}
                           </div>
                           <section className="panel ballot">
                             <h2>Your ballot</h2>
-                            {[
-                              "First favorite",
-                              "Second favorite",
-                              "Third favorite",
-                              "Downvote",
-                            ].map((name, i) => (
+                            {BALLOT_LABELS.map((name, i) => (
                               <label key={name}>
                                 {name}
                                 <span>
@@ -1146,13 +1146,14 @@ export default function Game({ view = "shop" }: { view?: string }) {
                                 <summary>Full scoring breakdown</summary>
                                 <p>
                                   {JSON.parse(s.breakdown).counts.join(" / ")}{" "}
-                                  votes (1st / 2nd / 3rd / down). Positive{" "}
-                                  {JSON.parse(s.breakdown).positive}; negative{" "}
-                                  {JSON.parse(s.breakdown).negative}; shield +
-                                  {JSON.parse(s.breakdown).shield}; boost +
-                                  {JSON.parse(s.breakdown).boost}.
+                                    votes (1st / 2nd / 3rd{JSON.parse(s.breakdown).counts.length === 4 ? " / down" : ""}).
+                                  Base points {JSON.parse(s.breakdown).positive}.
+                                  {JSON.parse(s.breakdown).counts.length === 4 &&
+                                    ` Legacy downvote points ${JSON.parse(s.breakdown).negative}. Shield +${JSON.parse(s.breakdown).shield}.`}
+                                  {" "}Boost +{JSON.parse(s.breakdown).boost}.
                                 </p>
                               </details>
+                              <ResponseComments submissionId={s.submission_id} />
                             </div>
                           </div>
                         ))}
@@ -1443,11 +1444,11 @@ function Item({
         <div className="item-actions">
           <div className="price">
             <Heart size={18} />
-            <b>{item.cost !== undefined ? item.cost : quantity}</b>
-            <span>{item.cost !== undefined ? "Likes" : "owned"}</span>
+            <b>{inventory ? quantity : item.cost}</b>
+            <span>{inventory ? "owned" : "Likes"}</span>
           </div>
           <button disabled={inventory && !item.enabled} onClick={onClick}>
-            {inventory ? (item.effect === "media_response" ? "Go to response" : "Activate") : "Get power-up"}
+            {inventory ? (item.effect === "downvote_shield" ? "Retired" : item.effect === "media_response" ? "Go to response" : "Activate") : "Get power-up"}
             <Plus size={15} />
           </button>
         </div>
@@ -1761,7 +1762,7 @@ function Admin({
               <div className="row-actions">
                 <button
                   className="secondary"
-                  disabled={busy}
+                  disabled={busy || x.effect === "downvote_shield"}
                   onClick={() =>
                     act(
                       { action: "item", item: { ...x, enabled: !x.enabled } },
@@ -1773,6 +1774,7 @@ function Admin({
                 </button>
                 <button
                   className="icon-button"
+                  disabled={x.effect === "downvote_shield"}
                   onClick={() => setModal({ type: "item", item: x })}
                   aria-label={`Edit ${x.name}`}
                 >
@@ -1837,17 +1839,11 @@ function Admin({
               {number("Minimum entries for ranked rewards", "minEntries")}
               {rules.votePoints.map((n: number, i: number) => (
                 <label className="form-label" key={i}>
-                  {
-                    [
-                      "First favorite",
-                      "Second favorite",
-                      "Third favorite",
-                      "Downvote",
-                    ][i]
-                  }{" "}
+                  {BALLOT_LABELS[i]}{" "}
                   points
                   <input
                     type="number"
+                    min={0}
                     value={n}
                     onChange={(e) =>
                       setRules({
@@ -2244,11 +2240,7 @@ function ItemEditor({ item, busy, close, save }: any) {
           </label>
           {x.effect !== "media_response" && (
             <label className="form-label">
-              {x.effect === "word_limit"
-                ? "Word limit"
-                : x.effect === "downvote_shield"
-                  ? "Downvotes negated"
-                  : "Multiplier"}
+              {x.effect === "word_limit" ? "Word limit" : "Multiplier"}
               <input
                 type="number"
                 required

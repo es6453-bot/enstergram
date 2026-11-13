@@ -18,7 +18,7 @@ export async function GET() {
     const result = await database()
       .prepare("SELECT COUNT(*) AS count FROM _app_migrations")
       .first();
-    if (!result || result.count < 12)
+    if (!result || result.count < 13)
       return Response.json(
         { ok: false, code: "database_not_ready" },
         { status: 503 },

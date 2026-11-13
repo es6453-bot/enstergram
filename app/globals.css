@@ -1378,6 +1378,32 @@ svg {
   border-radius: 10px;
   object-fit: contain;
 }
+.response-comments {
+  margin-top: 14px;
+}
+.comment-thread {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+.comment-thread textarea {
+  width: 100%;
+  resize: vertical;
+}
+.comment-thread ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.comment-thread li {
+  border-top: 1px solid #343040;
+  padding-block: 10px;
+}
+.comment-thread li p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin: 6px 0;
+}
 .help {
   font-size: 10px;
   line-height: 1.8;
