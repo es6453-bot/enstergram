@@ -245,6 +245,20 @@ export const responseAwards = sqliteTable(
     check("valid_response_award", sql`${t.award} IN ('reddit_gold','top_tier','skull')`),
   ],
 );
+export const achievementNotifications = sqliteTable(
+  "achievement_notifications",
+  {
+    id: integer().primaryKey({ autoIncrement: true }),
+    userId: text("user_id").notNull().references(() => profiles.id),
+    kind: text().notNull(),
+    sourceId: text("source_id").notNull(),
+    label: text().notNull(),
+  },
+  (t) => [
+    index("achievement_notifications_by_player").on(t.userId, t.id),
+    check("achievement_notification_kind", sql`${t.kind} IN ('award','badge')`),
+  ],
+);
 export const responseReactions = sqliteTable(
   "response_reactions",
   {

@@ -64,7 +64,7 @@ test("libSQL applies all migrations once and exposes fractional server timestamp
     assert.equal(
       (await client.execute("SELECT COUNT(*) AS n FROM _app_migrations"))
         .rows[0].n,
-      15,
+      16,
     );
     assert.equal((await migrate(client)).applied, 0);
     const r = await client.execute("SELECT unixepoch('subsec') AS now");
@@ -362,8 +362,23 @@ test("response awards, voting reactions, the winner badge and comment images res
     const result = (await server.feed("round", "bob")).entries[0];
     assert.deepEqual(result.awards, ["reddit_gold"]);
     assert.equal(result.score, 3);
+    const relevantNotices = async (id) => (await server.state(id)).notifications
+      .filter(({ kind, label }) => kind === "award" || label === "Top Response");
+    const aliceNotices = await relevantNotices("alice");
+    assert.deepEqual(aliceNotices.map(({ kind, label }) => [kind, label]), [
+      ["award", "reddit_gold"], ["badge", "Top Response"],
+    ]);
+    const [awardNotice, badgeNotice] = aliceNotices;
+    assert.deepEqual(await relevantNotices("bob"), []);
+    const dismiss = (id, notificationId) => server.mutate("dismissAchievement", { notificationId }, { id });
+    await dismiss("bob", badgeNotice.id);
+    assert.deepEqual(await relevantNotices("alice"), [awardNotice, badgeNotice]);
+    await dismiss("alice", badgeNotice.id);
+    await dismiss("alice", badgeNotice.id);
+    assert.deepEqual(await relevantNotices("alice"), [awardNotice]);
     await award("staff", false);
     assert.deepEqual((await server.feed("round", "bob")).entries[0].awards, []);
+    assert.deepEqual(await relevantNotices("alice"), []);
     const { socialState } = await import("../.test-runtime/platform/social.mjs");
     assert.ok((await socialState(db, "alice", false)).ownership.some((item) => item.item_id === "top-response"));
     assert.ok(!(await socialState(db, "bob", false)).ownership.some((item) => item.item_id === "top-response"));
@@ -529,7 +544,7 @@ test("GitHub access defaults to owner-only and uses stable numeric verified subj
 async function snapshotOf(client) {
   const names = (
     await client.execute(
-      "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT IN ('_app_migrations','auth_identities','auth_users','player_handles','auth_verification_tokens','auth_link_tokens','auth_rate_limits','google_accounts','staff_roles','admin_invitations','player_suspensions','submission_media','response_comments','response_awards','response_reactions')",
+      "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT IN ('_app_migrations','auth_identities','auth_users','player_handles','auth_verification_tokens','auth_link_tokens','auth_rate_limits','google_accounts','staff_roles','admin_invitations','player_suspensions','submission_media','response_comments','response_awards','response_reactions','achievement_notifications')",
     )
   ).rows.map((x) => x.name);
   const tables = {};

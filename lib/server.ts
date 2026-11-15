@@ -379,6 +379,10 @@ export async function state(userId: string) {
     serverNow,
     timeZone: GAME_TIME_ZONE,
     social: await socialState(db(), userId, admin),
+    notifications: await all(
+      "SELECT id,kind,label FROM achievement_notifications WHERE user_id=? ORDER BY id LIMIT 10",
+      userId,
+    ),
     profile: {
       ...(await one("SELECT * FROM profiles WHERE id=?", userId)),
       role,
@@ -578,6 +582,16 @@ export async function mutate(action: string, b: any, user: any) {
   }
   if (action === "addComment") return addComment(db(), u, b.submissionId, b.content);
   if (action === "removeComment") return removeComment(db(), u, b.commentId);
+  if (action === "dismissAchievement") {
+    if (!Number.isSafeInteger(b.notificationId) || b.notificationId < 1)
+      throw new Error("Invalid notification.");
+    await stmt(
+      "DELETE FROM achievement_notifications WHERE user_id=? AND id=?",
+      u,
+      b.notificationId,
+    ).run();
+    return;
+  }
   if (action === "responseReaction")
     return setResponseReaction(db(), u, b.submissionId, b.reaction, b.enabled);
   if (await socialMutation(db(), action, b, user)) return;

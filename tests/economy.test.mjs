@@ -45,7 +45,8 @@ const schema =
   readFileSync("drizzle/0011_submission_media.sql", "utf8") +
   readFileSync("drizzle/0012_comments_and_positive_ballots.sql", "utf8") +
   readFileSync("drizzle/0013_eastern_results_schedule.sql", "utf8") +
-  readFileSync("drizzle/0014_response_engagement.sql", "utf8");
+  readFileSync("drizzle/0014_response_engagement.sql", "utf8") +
+  readFileSync("drizzle/0015_achievement_notifications.sql", "utf8");
 class Adapter {
   constructor(raw) {
     this.raw = raw;

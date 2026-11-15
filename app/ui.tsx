@@ -49,6 +49,7 @@ import { ResponseImage } from "./response-image";
 import { BrandMark } from "./brand-mark";
 import { ResponseComments } from "./response-comments";
 import { ResponseAwards, VotingReactions } from "./response-engagement";
+import { RESPONSE_AWARDS } from "../lib/response-engagement";
 import {
   easternDate,
   easternDeadline,
@@ -150,10 +151,47 @@ function Modal({
     </dialog>
   );
 }
+type AchievementNotification = { id: number; kind: "award" | "badge"; label: string };
+
+function AchievementPopup({ notification, dismiss }: {
+  notification: AchievementNotification;
+  dismiss: (id: number) => Promise<void>;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const award = notification.kind === "award"
+    ? RESPONSE_AWARDS.find(({ key }) => key === notification.label)
+    : undefined;
+  return (
+    <aside className="achievement-popup" aria-label="Achievement notification">
+      <span className="achievement-icon" aria-hidden="true">{award ? award.icon : <Trophy size={24} />}</span>
+      <div className="achievement-message" role="status">
+        <strong>{award ? "Your response received an award" : "You earned a badge"}</strong>
+        <p>{award?.label ?? notification.label}</p>
+        {failed && <small>Couldn’t dismiss this notification. Try again.</small>}
+      </div>
+      <button type="button" className="icon-button" disabled={busy} aria-label="Dismiss achievement" onClick={async () => {
+        setBusy(true);
+        setFailed(false);
+        try {
+          await dismiss(notification.id);
+        } catch {
+          setFailed(true);
+        } finally {
+          setBusy(false);
+        }
+      }}>
+        <X size={18} />
+      </button>
+    </aside>
+  );
+}
+
 export default function Game({ view = "shop" }: { view?: string }) {
   const [data, setData] = useState<any>(null),
     [error, setError] = useState(""),
     [toast, setToast] = useState(""),
+    [dismissedAchievements, setDismissedAchievements] = useState<number[]>([]),
     [busy, setBusy] = useState(false),
     [tab, setTab] = useState("shop"),
     [query, setQuery] = useState(""),
@@ -227,6 +265,9 @@ export default function Game({ view = "shop" }: { view?: string }) {
     voting = rounds.filter((r: any) => r.phase === "VOTING"),
     completed = rounds.filter((r: any) => r.phase === "RESULTS" && r.finalized),
     selected = (view === "vote" ? voting : completed).find((r: any) => r.id === roundId);
+  const achievement = data?.notifications?.find(
+    (item: AchievementNotification) => !dismissedAchievements.includes(item.id),
+  );
   const currentId = current?.id;
   const initializedComposer = useRef("");
   useEffect(() => {
@@ -1222,6 +1263,13 @@ export default function Game({ view = "shop" }: { view?: string }) {
             <X size={16} />
           </button>
         </div>
+      )}
+      {achievement && !modal && (
+        <AchievementPopup key={achievement.id} notification={achievement} dismiss={async (id) => {
+          await api({ action: "dismissAchievement", notificationId: id });
+          setDismissedAchievements((items) => [...items, id]);
+          void load();
+        }} />
       )}
       {modal?.type === "purchase" && (
         <Modal title="Make it yours." close={() => !busy && setModal(null)}>

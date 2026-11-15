@@ -1864,6 +1864,47 @@ textarea {
   display: flex;
   align-items: center;
 }
+.achievement-popup {
+  position: fixed;
+  inset-block-start: 16px;
+  inset-inline-end: 16px;
+  z-index: 101;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  width: min(350px, calc(100vw - 32px));
+  padding: 14px;
+  border: 1px solid #655076;
+  border-radius: 10px;
+  color: #efdefb;
+  background: #292032;
+  box-shadow: 0 12px 40px #0008;
+}
+.achievement-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 40px;
+  height: 40px;
+  font-size: 22px;
+  border-radius: 8px;
+  color: #ffd36e;
+  background: #442e4d;
+}
+.achievement-message {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.achievement-message strong {
+  font-size: 12px;
+}
+.achievement-message p {
+  margin: 4px 0 0;
+}
+.achievement-message small {
+  display: block;
+  margin-top: 6px;
+}
 dialog {
   position: fixed;
   inset: 0;

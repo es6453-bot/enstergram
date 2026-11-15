@@ -16,7 +16,7 @@ export async function restoreSnapshot(client, snapshot, ownerSubject) {
   const sourceNames = Object.keys(snapshot.tables);
   const authTables = new Set(["auth_identities","auth_users","player_handles","auth_verification_tokens","auth_link_tokens","auth_rate_limits","google_accounts","staff_roles","admin_invitations","player_suspensions"]);
   const expected = targetTables.filter(
-    (name) => !authTables.has(name) && !["submission_media", "response_comments", "response_awards", "response_reactions"].includes(name),
+    (name) => !authTables.has(name) && !["submission_media", "response_comments", "response_awards", "response_reactions", "achievement_notifications"].includes(name),
   );
   if (
     sourceNames.length !== expected.length ||
