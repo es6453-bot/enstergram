@@ -1,5 +1,6 @@
 "use client";
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { ChevronDown } from "lucide-react";
 import { RESPONSE_AWARDS, RESPONSE_REACTIONS, type Reaction } from "../lib/response-engagement";
 
 async function updateResponse(body: object) {
@@ -18,35 +19,68 @@ export function VotingReactions({ submissionId, initial }: {
   const [reactions, setReactions] = useState(initial);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
+  const dropdown = useRef<HTMLDetailsElement>(null);
+  const trigger = useRef<HTMLElement>(null);
+  const received = RESPONSE_REACTIONS.flatMap((option) => {
+    const total = reactions.find((entry) => entry.reaction === option.key)?.total ?? 0;
+    return total > 0 ? [{ ...option, total }] : [];
+  });
+
+  function closeDropdown() {
+    if (dropdown.current) dropdown.current.open = false;
+    trigger.current?.focus();
+  }
+
+  async function toggleReaction(key: string) {
+    const current = reactions.find((entry) => entry.reaction === key);
+    const enabled = !current?.own;
+    setPending(true);
+    setError("");
+    try {
+      await updateResponse({ action: "responseReaction", submissionId, reaction: key, enabled });
+      setReactions([
+        ...reactions.filter((entry) => entry.reaction !== key),
+        { reaction: key, own: enabled, total: (current?.total ?? 0) + (enabled ? 1 : -1) },
+      ]);
+      closeDropdown();
+    } catch (cause) {
+      setError((cause as Error).message);
+    } finally {
+      setPending(false);
+    }
+  }
+
   return (
-    <div className="response-engagement">
-      <div className="response-engagement-options" role="group" aria-label="Reactions">
-        {RESPONSE_REACTIONS.map(({ key, label, icon }) => {
-          const current = reactions.find((entry) => entry.reaction === key);
-          const own = current?.own ?? false;
-          const total = current?.total ?? 0;
-          return (
+    <div className="voting-reactions">
+      {!!received.length && (
+        <ul className="voting-reaction-counts" aria-label="Reactions received">
+          {received.map(({ key, label, icon, total }) => (
+            <li key={key} aria-label={`${label}, ${total}`}>
+              <span aria-hidden="true">{icon} {total}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      <details className="voting-reaction-dropdown" ref={dropdown} onKeyDown={(event) => {
+        if (event.key === "Escape" && dropdown.current?.open) {
+          event.preventDefault();
+          closeDropdown();
+        }
+      }}>
+        <summary className="secondary" ref={trigger} aria-label="Choose a reaction" title="Choose a reaction">
+          <ChevronDown size={16} aria-hidden="true" />
+        </summary>
+        <div className="response-engagement-options" role="group" aria-label="Choose a reaction">
+          {RESPONSE_REACTIONS.map(({ key, label, icon }) => (
             <button type="button" className="secondary" key={key} disabled={pending}
-              aria-label={label} aria-pressed={own} title={label} onClick={async () => {
-                setPending(true);
-                setError("");
-                try {
-                  await updateResponse({ action: "responseReaction", submissionId, reaction: key, enabled: !own });
-                  setReactions([
-                    ...reactions.filter((entry) => entry.reaction !== key),
-                    { reaction: key, own: !own, total: total + (own ? -1 : 1) },
-                  ]);
-                } catch (cause) {
-                  setError((cause as Error).message);
-                } finally {
-                  setPending(false);
-                }
-              }}>
-              <span aria-hidden="true">{icon}</span>{total > 0 && <span aria-label={`${total} reactions`}>{total}</span>}
+              aria-label={label} title={label}
+              aria-pressed={reactions.some((entry) => entry.reaction === key && entry.own)}
+              onClick={() => void toggleReaction(key)}>
+              <span aria-hidden="true">{icon}</span>
             </button>
-          );
-        })}
-      </div>
+          ))}
+        </div>
+      </details>
       {error && <p role="alert">{error}</p>}
     </div>
   );

@@ -1491,6 +1491,65 @@ svg {
   margin-bottom: 15px;
   padding: 26px;
 }
+.anonymous-card-header,
+.voting-reactions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.anonymous-card-header {
+  justify-content: space-between;
+}
+.voting-reactions {
+  margin-inline-start: auto;
+  justify-content: flex-end;
+}
+.voting-reaction-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  font-size: 12px;
+}
+.voting-reaction-counts li {
+  padding: 3px 6px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.voting-reaction-dropdown {
+  position: relative;
+}
+.voting-reaction-dropdown summary {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  list-style: none;
+  cursor: pointer;
+}
+.voting-reaction-dropdown summary::-webkit-details-marker {
+  display: none;
+}
+.voting-reaction-dropdown[open] summary svg {
+  transform: rotate(180deg);
+}
+.voting-reaction-dropdown .response-engagement-options {
+  position: absolute;
+  inset-inline-end: 0;
+  top: 100%;
+  z-index: 2;
+  width: min(266px, calc(100vw - 72px));
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: 0 8px 20px #0005;
+}
+.voting-reaction-dropdown .response-engagement-options button {
+  padding: 0;
+}
 .anonymous-label {
   font-size: 8px;
   letter-spacing: 1.1px;

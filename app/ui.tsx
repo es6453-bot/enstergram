@@ -1030,10 +1030,13 @@ export default function Game({ view = "shop" }: { view?: string }) {
                           <div>
                             {feed?.entries?.map((s: any, i: number) => (
                               <div className="panel anonymous-card" key={s.id}>
-                                <span className="anonymous-label">
-                                  ANONYMOUS TAKE ·{" "}
-                                  {String(i + 1).padStart(2, "0")}
-                                </span>
+                                <div className="anonymous-card-header">
+                                  <span className="anonymous-label">
+                                    ANONYMOUS TAKE ·{" "}
+                                    {String(i + 1).padStart(2, "0")}
+                                  </span>
+                                  <VotingReactions submissionId={s.id} initial={s.reactions ?? []} />
+                                </div>
                                 {s.has_media ? <ResponseImage id={s.id} /> : <h3>{s.content}</h3>}
                                 {s.effect_name && (
                                   <span className="effect-badge">
@@ -1044,7 +1047,6 @@ export default function Game({ view = "shop" }: { view?: string }) {
                                     {s.effect_type !== "media_response" && `: ${s.parameter}`}
                                   </span>
                                 )}
-                                <VotingReactions submissionId={s.id} initial={s.reactions ?? []} />
                                 <ResponseComments submissionId={s.id} />
                               </div>
                             ))}
