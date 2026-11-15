@@ -32,6 +32,7 @@ export const UNLOCK_TYPES = [
   "tier",
   "streak",
   "participation",
+  "round_winner",
   "achievement",
   "event",
   "shop",

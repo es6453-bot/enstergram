@@ -16,7 +16,7 @@ export async function restoreSnapshot(client, snapshot, ownerSubject) {
   const sourceNames = Object.keys(snapshot.tables);
   const authTables = new Set(["auth_identities","auth_users","player_handles","auth_verification_tokens","auth_link_tokens","auth_rate_limits","google_accounts","staff_roles","admin_invitations","player_suspensions"]);
   const expected = targetTables.filter(
-    (name) => !authTables.has(name) && !["submission_media", "response_comments"].includes(name),
+    (name) => !authTables.has(name) && !["submission_media", "response_comments", "response_awards", "response_reactions"].includes(name),
   );
   if (
     sourceNames.length !== expected.length ||
@@ -81,9 +81,11 @@ export async function restoreSnapshot(client, snapshot, ownerSubject) {
         .join(" UNION ALL "),
     );
     const updates = await transaction.execute("SELECT id FROM economy_updates");
+    const cosmetics = await transaction.execute("SELECT id FROM cosmetics");
     if (
       updates.rows.some((row) => row.id !== "positive-ballots-v1") ||
-      counts.rows.some((x) => x.name !== "economy_updates" && x.count !== 0)
+      cosmetics.rows.some((row) => row.id !== "top-response") ||
+      counts.rows.some((x) => !["economy_updates", "cosmetics"].includes(x.name) && x.count !== 0)
     )
       throw new Error(
         "Restore requires an empty migrated database. Existing game data will never be overwritten or merged automatically.",
@@ -103,7 +105,8 @@ export async function restoreSnapshot(client, snapshot, ownerSubject) {
         columns = table.columns;
       const sql = `INSERT INTO ${quote(name)}(${columns.map(quote).join(",")}) VALUES(${columns.map(() => "?").join(",")})`;
       for (const row of table.rows)
-        if (name !== "economy_updates" || row.id !== "positive-ballots-v1")
+        if ((name !== "economy_updates" || row.id !== "positive-ballots-v1") &&
+            (name !== "cosmetics" || row.id !== "top-response"))
           inserts.push({ sql, args: columns.map((column) => row[column]) });
     }
     if (inserts.length) await transaction.batch(inserts);

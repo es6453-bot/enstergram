@@ -44,7 +44,8 @@ const schema =
   readFileSync("drizzle/0010_staff_roles.sql", "utf8") +
   readFileSync("drizzle/0011_submission_media.sql", "utf8") +
   readFileSync("drizzle/0012_comments_and_positive_ballots.sql", "utf8") +
-  readFileSync("drizzle/0013_eastern_results_schedule.sql", "utf8");
+  readFileSync("drizzle/0013_eastern_results_schedule.sql", "utf8") +
+  readFileSync("drizzle/0014_response_engagement.sql", "utf8");
 class Adapter {
   constructor(raw) {
     this.raw = raw;
@@ -172,9 +173,10 @@ before(async () => {
     "media-limits",
     "response-media",
     "comments",
+    "response-engagement",
   ]) {
     const source = readFileSync(`lib/${moduleName}.ts`, "utf8").replace(
-      /from\s*["']\.\/(time|progression|social-seed|access|media-limits|comments)["']/g,
+      /from\s*["']\.\/(time|progression|social-seed|access|media-limits|comments|response-engagement)["']/g,
       (_, name) => `from './${name}.mjs'`,
     );
     writeFileSync(
@@ -191,7 +193,7 @@ before(async () => {
     .replace(/from\s*['"]\.\/rules['"]/, "from './rules.mjs'")
     .replace(/from\s*['"]\.\/time['"]/, "from './time.mjs'")
     .replace(/from\s*['"]\.\/social['"]/, "from './social.mjs'")
-    .replace(/from\s*['"]\.\/(response-media|media-limits|comments)['"]/g, (_, name) => `from './${name}.mjs'`)
+    .replace(/from\s*['"]\.\/(response-media|media-limits|comments|response-engagement)['"]/g, (_, name) => `from './${name}.mjs'`)
     .replace(
       /from\s*['"]\.\/identity-policy['"]/,
       "from './identity-policy.mjs'",

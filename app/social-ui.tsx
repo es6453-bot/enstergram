@@ -984,12 +984,12 @@ export function SocialAdmin({ data, busy, act }: any) {
                   >
                     {UNLOCK_TYPES.map((k) => (
                       <option key={k} value={k}>
-                        {friendly(k)}
+                        {k === "round_winner" ? "First place with a positive score" : friendly(k)}
                       </option>
                     ))}
                   </select>
                 </label>
-                {number(
+                {editor.value.unlock_type !== "round_winner" && number(
                   "unlock_value",
                   "Follower / streak / activity threshold",
                 )}
@@ -1010,15 +1010,15 @@ export function SocialAdmin({ data, busy, act }: any) {
                     ))}
                   </select>
                 </label>
-              ) : (
+              ) : editor.value.unlock_type !== "round_winner" ? (
                 text(
                   "unlock_target",
                   "Optional event / achievement / future shop reference",
                   100,
                 )
-              )}
+              ) : null}
               <p className="help">
-                All, follower, tier, streak and participation unlocks run
+                All, round winner, follower, tier, streak and participation unlocks run
                 automatically. Manual, achievement, event and shop references
                 use owner assignment for now; shop references reserve future
                 integration. No cosmetic purchase charges are implemented.

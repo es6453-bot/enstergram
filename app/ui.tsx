@@ -48,6 +48,7 @@ import { MAX_RESPONSE_IMAGE_BYTES, RESPONSE_IMAGE_ACCEPT } from "../lib/media-li
 import { ResponseImage } from "./response-image";
 import { BrandMark } from "./brand-mark";
 import { ResponseComments } from "./response-comments";
+import { ResponseAwards, VotingReactions } from "./response-engagement";
 import {
   easternDate,
   easternDeadline,
@@ -1043,6 +1044,7 @@ export default function Game({ view = "shop" }: { view?: string }) {
                                     {s.effect_type !== "media_response" && `: ${s.parameter}`}
                                   </span>
                                 )}
+                                <VotingReactions submissionId={s.id} initial={s.reactions ?? []} />
                                 <ResponseComments submissionId={s.id} />
                               </div>
                             ))}
@@ -1175,6 +1177,7 @@ export default function Game({ view = "shop" }: { view?: string }) {
                                   {" "}Boost +{JSON.parse(s.breakdown).boost}.
                                 </p>
                               </details>
+                              <ResponseAwards submissionId={s.submission_id} initial={s.awards ?? []} canManage={admin} />
                               <ResponseComments submissionId={s.submission_id} />
                             </div>
                           </div>

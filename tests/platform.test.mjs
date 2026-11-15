@@ -28,6 +28,7 @@ before(async () => {
     "media-limits",
     "response-media",
     "comments",
+    "response-engagement",
     "server",
   ]) {
     let code = readFileSync(`lib/${name}.ts`, "utf8")
@@ -36,7 +37,7 @@ before(async () => {
         "const database=()=>globalThis.__platformDb;",
       )
       .replace(
-        /from\s*["']\.\/(rules|time|progression|social-seed|social|identity-policy|access|response-media|media-limits|comments)["']/g,
+        /from\s*["']\.\/(rules|time|progression|social-seed|social|identity-policy|access|response-media|media-limits|comments|response-engagement)["']/g,
         (_, moduleName) => `from './${moduleName}.mjs'`,
       );
     writeFileSync(
@@ -63,7 +64,7 @@ test("libSQL applies all migrations once and exposes fractional server timestamp
     assert.equal(
       (await client.execute("SELECT COUNT(*) AS n FROM _app_migrations"))
         .rows[0].n,
-      14,
+      15,
     );
     assert.equal((await migrate(client)).applied, 0);
     const r = await client.execute("SELECT unixepoch('subsec') AS now");
@@ -308,6 +309,68 @@ test("a delayed scheduler settles due rounds once after ballots become immutable
     client.close();
   }
 });
+test("response awards, voting reactions, the winner badge and comment images respect their access and scoring rules", async () => {
+  const client = await fresh();
+  try {
+    const { DEFAULTS } = await import("../.test-runtime/platform/rules.mjs");
+    const { commentPage, readCommentImage } = await import("../.test-runtime/platform/comments.mjs");
+    const now = Date.now();
+    await client.batch([
+      "INSERT INTO profiles VALUES('alice','Alice','player',0),('bob','Bob','player',0),('staff','Staff','player',0)",
+      "INSERT INTO wallets VALUES('alice',0),('bob',0)",
+      "INSERT INTO auth_identities VALUES('google','staff-subject','staff',1)",
+      "INSERT INTO google_accounts VALUES('staff-subject','staff','staff@example.com',1)",
+      "INSERT INTO staff_roles VALUES('staff','owner','staff-subject','staff',1)",
+      { sql: "INSERT INTO rounds(id,number,prompt,opens,closes,ends,config) VALUES('round',1,'Prompt',?,?,?,?)",
+        args: [now - 60000, now + 60000, now + 120000, JSON.stringify(DEFAULTS)] },
+      "INSERT INTO submissions VALUES('entry','round','alice','Anonymous until results',0),('other','round','bob','Second response',0)",
+      "DROP TRIGGER round_snapshot",
+    ], "write");
+    const db = globalThis.__platformDb;
+    const react = (id, enabled = true) => server.mutate("responseReaction", {
+      submissionId: "entry", reaction: "heart", enabled,
+    }, { id });
+    const award = (id, enabled = true) => server.mutate("responseAward", {
+      submissionId: "entry", award: "reddit_gold", enabled,
+    }, { id });
+    await assert.rejects(react("bob"), /during voting/);
+    await assert.rejects(award("staff"), /finalized/);
+    await client.execute({ sql: "UPDATE rounds SET closes=? WHERE id='round'", args: [now - 1000] });
+    await assert.rejects(react("alice"), /other players/);
+    await Promise.all([react("bob"), react("bob"), react("staff")]);
+    const votingEntry = (await server.feed("round", "bob")).entries[0];
+    assert.deepEqual(votingEntry.reactions, [{ reaction: "heart", total: 2, own: true }]);
+    assert.equal(votingEntry.user_id, undefined);
+    await react("staff", false);
+    await assert.rejects(award("bob"), /Administrator/);
+    const gif = await sharp({ create: { width: 4, height: 4, channels: 3, background: "orange" } }).gif().toBuffer();
+    const form = new FormData();
+    form.set("submissionId", "entry");
+    form.set("image", new File([gif], "animation.gif", { type: "image/gif" }));
+    await server.submitCommentMedia(form, "bob");
+    const { comments: [comment] } = await commentPage(db, "alice", "entry");
+    assert.deepEqual(comment, { id: comment.id, content: "", own: false, canRemove: false, hasImage: true });
+    assert.equal((await readCommentImage(db, "alice", comment.id)).mime, "image/gif");
+    assert.equal((await server.one("SELECT COUNT(*) AS n FROM ledger")).n, 0);
+    await server.mutate("removeComment", { commentId: comment.id }, { id: "staff" });
+    assert.equal(await readCommentImage(db, "alice", comment.id), null);
+    await server.mutate("vote", { roundId: "round", choices: ["entry", null, null] }, { id: "bob" });
+    await client.execute({ sql: "UPDATE rounds SET ends=? WHERE id='round'", args: [now - 10] });
+    await server.finalizeDueRounds();
+    await assert.rejects(react("bob"), /during voting/);
+    await Promise.all([award("staff"), award("staff")]);
+    const result = (await server.feed("round", "bob")).entries[0];
+    assert.deepEqual(result.awards, ["reddit_gold"]);
+    assert.equal(result.score, 3);
+    await award("staff", false);
+    assert.deepEqual((await server.feed("round", "bob")).entries[0].awards, []);
+    const { socialState } = await import("../.test-runtime/platform/social.mjs");
+    assert.ok((await socialState(db, "alice", false)).ownership.some((item) => item.item_id === "top-response"));
+    assert.ok(!(await socialState(db, "bob", false)).ownership.some((item) => item.item_id === "top-response"));
+  } finally {
+    client.close();
+  }
+});
 test("real libSQL write batches roll back all operations and reject concurrent overspending", async () => {
   const client = await fresh();
   const db = globalThis.__platformDb;
@@ -466,7 +529,7 @@ test("GitHub access defaults to owner-only and uses stable numeric verified subj
 async function snapshotOf(client) {
   const names = (
     await client.execute(
-      "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT IN ('_app_migrations','auth_identities','auth_users','player_handles','auth_verification_tokens','auth_link_tokens','auth_rate_limits','google_accounts','staff_roles','admin_invitations','player_suspensions','submission_media','response_comments')",
+      "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT IN ('_app_migrations','auth_identities','auth_users','player_handles','auth_verification_tokens','auth_link_tokens','auth_rate_limits','google_accounts','staff_roles','admin_invitations','player_suspensions','submission_media','response_comments','response_awards','response_reactions')",
     )
   ).rows.map((x) => x.name);
   const tables = {};

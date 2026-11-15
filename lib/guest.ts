@@ -22,7 +22,8 @@ export async function guestData(db: GameDatabase, now = Date.now()) {
       await db
         .prepare(
         `SELECT s.content,p.name,r.rank,r.raw,r.bonus,r.score,r.followers,r.breakdown,e.name AS effect_name,
-        m.submission_id AS media_id
+        m.submission_id AS media_id,
+        (SELECT json_group_array(award) FROM response_awards WHERE submission_id=s.id) AS awards
       FROM results r JOIN submissions s ON s.id=r.submission_id JOIN profiles p ON p.id=r.user_id
       LEFT JOIN effects e ON e.submission_id=s.id
       LEFT JOIN submission_media m ON m.submission_id=s.id WHERE r.round_id=? ORDER BY r.rank`,

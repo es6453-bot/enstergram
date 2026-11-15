@@ -1,9 +1,23 @@
 import sharp from "sharp";
-import type { GameDatabase } from "./database";
+import type { GameDatabase, GameRow } from "./database";
 import { MAX_RESPONSE_IMAGE_BYTES } from "./media-limits";
 
 const MAX_PIXELS = 32_000_000;
 const MAX_FRAMES = 120;
+
+export function imageResponse(media: GameRow | null) {
+  const headers = { "Cache-Control": "private, no-store" };
+  if (!media) return new Response(null, { status: 404, headers });
+  return new Response(new Uint8Array(media.image), {
+    headers: {
+      ...headers,
+      "Content-Type": media.mime,
+      "X-Content-Type-Options": "nosniff",
+      "Content-Security-Policy": "default-src 'none'; sandbox",
+      "Cross-Origin-Resource-Policy": "same-origin",
+    },
+  });
+}
 
 export async function processResponseImage(input: Uint8Array) {
   if (!input.length || input.length > MAX_RESPONSE_IMAGE_BYTES)

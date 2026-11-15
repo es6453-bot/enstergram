@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { getCurrentUser } from "../../../lib/current-user";
-import { setup, state, mutate, feed, stmt, submitMedia } from "../../../lib/server";
+import { setup, state, mutate, feed, stmt, submitMedia, submitCommentMedia } from "../../../lib/server";
 import { currencyCopy } from "../../../lib/rules";
 import { AccessError } from "../../../lib/access";
 import { MAX_RESPONSE_IMAGE_BYTES } from "../../../lib/media-limits";
@@ -60,7 +60,11 @@ export async function POST(request: Request) {
       `${user.id}:${bucket}`,
       bucket,
     ).run();
-    if (multipart) await submitMedia(await request.formData(), user.id);
+    if (multipart) {
+      const form = await request.formData();
+      if (form.get("action") === "addComment") await submitCommentMedia(form, user.id);
+      else await submitMedia(form, user.id);
+    }
     else {
       const b: any = await request.json();
       await mutate(b.action, b, user);

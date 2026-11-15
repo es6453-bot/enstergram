@@ -223,10 +223,38 @@ export const responseComments = sqliteTable(
       .notNull()
       .references(() => profiles.id),
     content: text().notNull(),
+    mime: text(),
+    image: blob({ mode: "buffer" }),
   },
   (t) => [
     index("response_comment_page").on(t.submissionId, t.id),
-    check("response_comment_length", sql`length(${t.content}) BETWEEN 1 AND 1000`),
+    check("response_comment_length", sql`length(${t.content}) <= 1000 AND (length(${t.content}) > 0 OR ${t.image} IS NOT NULL)`),
+    check("response_comment_image", sql`(${t.mime} IS NULL AND ${t.image} IS NULL) OR (${t.mime} IS NOT NULL AND ${t.mime} IN ('image/gif','image/webp') AND ${t.image} IS NOT NULL AND length(${t.image}) BETWEEN 1 AND 2097152)`),
+  ],
+);
+export const responseAwards = sqliteTable(
+  "response_awards",
+  {
+    submissionId: text("submission_id").notNull().references(() => submissions.id),
+    award: text().notNull(),
+    grantedBy: text("granted_by").notNull().references(() => profiles.id),
+    created: integer().notNull(),
+  },
+  (t) => [
+    uniqueIndex("one_response_award").on(t.submissionId, t.award),
+    check("valid_response_award", sql`${t.award} IN ('reddit_gold','top_tier','skull')`),
+  ],
+);
+export const responseReactions = sqliteTable(
+  "response_reactions",
+  {
+    submissionId: text("submission_id").notNull().references(() => submissions.id),
+    userId: text("user_id").notNull().references(() => profiles.id),
+    reaction: text().notNull(),
+  },
+  (t) => [
+    uniqueIndex("one_response_reaction").on(t.submissionId, t.userId, t.reaction),
+    check("valid_response_reaction", sql`${t.reaction} IN ('heart','thumbs_up','skull','crying','talking')`),
   ],
 );
 export const ballots = sqliteTable(

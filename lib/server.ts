@@ -15,6 +15,7 @@ import {
 import { processResponseImage } from "./response-media";
 import { MAX_RESPONSE_IMAGE_BYTES } from "./media-limits";
 import { addComment, removeComment } from "./comments";
+import { roundReactions, setResponseAward, setResponseReaction } from "./response-engagement";
 import {
   socialState,
   socialMutation,
@@ -437,11 +438,22 @@ export async function feed(roundId: string, userId: string, votingOnly = false) 
       "SELECT s.content,p.name,r.*,e.name AS effect_name,e.type AS effect_type,e.parameter,m.submission_id IS NOT NULL AS has_media FROM results r JOIN submissions s ON s.id=r.submission_id JOIN profiles p ON p.id=r.user_id LEFT JOIN effects e ON e.submission_id=s.id LEFT JOIN submission_media m ON m.submission_id=s.id WHERE r.round_id=? ORDER BY rank",
       roundId,
     );
+    const awards = await all(
+      "SELECT a.submission_id,a.award FROM response_awards a JOIN results f ON f.submission_id=a.submission_id WHERE f.round_id=?",
+      roundId,
+    );
+    const bySubmission = new Map<string, string[]>();
+    for (const award of awards) {
+      const list = bySubmission.get(award.submission_id) ?? [];
+      list.push(award.award);
+      bySubmission.set(award.submission_id, list);
+    }
     const profiles = new Map();
     for (const s of entries) {
       if (!profiles.has(s.user_id))
         profiles.set(s.user_id, await publicProfile(db(), s.user_id));
       s.profile = profiles.get(s.user_id);
+      s.awards = bySubmission.get(s.submission_id) ?? [];
     }
     return {
       round: r,
@@ -476,12 +488,22 @@ export async function feed(roundId: string, userId: string, votingOnly = false) 
     roundId,
     userId,
   );
+  const reactions = await roundReactions(db(), roundId, userId);
   return {
-    entries: shuffled.map((s) => s.entry),
+    entries: shuffled.map(({ entry }) => reactions.has(entry.id)
+      ? { ...entry, reactions: reactions.get(entry.id) }
+      : entry),
     ballot: ballot
       ? { choices: JSON.stringify(JSON.parse(ballot.choices).slice(0, BALLOT_LABELS.length)) }
       : null,
   };
+}
+export async function submitCommentMedia(form: FormData, userId: string) {
+  const file = form.get("image");
+  if (!(file instanceof File) || !file.size || file.size > MAX_RESPONSE_IMAGE_BYTES)
+    throw new Error("Choose an image up to 2 MB.");
+  const media = await processResponseImage(new Uint8Array(await file.arrayBuffer()));
+  await addComment(db(), userId, form.get("submissionId"), form.get("content"), media);
 }
 export async function submitMedia(form: FormData, userId: string) {
   await requireActive(db(), userId);
@@ -556,6 +578,8 @@ export async function mutate(action: string, b: any, user: any) {
   }
   if (action === "addComment") return addComment(db(), u, b.submissionId, b.content);
   if (action === "removeComment") return removeComment(db(), u, b.commentId);
+  if (action === "responseReaction")
+    return setResponseReaction(db(), u, b.submissionId, b.reaction, b.enabled);
   if (await socialMutation(db(), action, b, user)) return;
   if (action === "purchase") {
     if (typeof b.key !== "string" || b.key.length > 100)
@@ -705,6 +729,8 @@ export async function mutate(action: string, b: any, user: any) {
     return;
   }
   await requireStaff(db(), u);
+  if (action === "responseAward")
+    return setResponseAward(db(), u, b.submissionId, b.award, b.enabled);
   if (action === "moderatePlayer") {
     if (typeof b.suspended !== "boolean")
       throw new Error("Choose suspend or reinstate.");

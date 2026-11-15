@@ -220,9 +220,15 @@ export async function unlockCosmetics(
         c.unlock_type='all' OR (c.unlock_type='followers' AND p.followers>=c.unlock_value)
         OR (c.unlock_type='streak' AND s.longest>=c.unlock_value)
         OR (c.unlock_type='participation' AND s.active_days>=c.unlock_value)
+        OR (c.unlock_type='round_winner' AND EXISTS(
+          SELECT 1 FROM results f JOIN rounds r ON r.id=f.round_id
+          WHERE f.user_id=p.id AND f.rank=1 AND f.score>0 AND r.cancelled=0
+          AND r.finalized IS NOT NULL AND r.ends<=?
+        ))
         OR (c.unlock_type='tier' AND EXISTS(SELECT 1 FROM tier_awards t WHERE t.user_id=p.id AND t.tier_id=c.unlock_target)))`,
       now,
       userId,
+      now,
     ),
     stmt(
       `INSERT OR IGNORE INTO cosmetic_ownership(user_id,item_id,source,earned)

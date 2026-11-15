@@ -32,6 +32,7 @@ before(async () => {
     "media-limits",
     "response-media",
     "comments",
+    "response-engagement",
     "server",
   ]) {
     const source = readFileSync(`lib/${name}.ts`, "utf8")
@@ -40,7 +41,7 @@ before(async () => {
         "const database=()=>globalThis.__roleDb;",
       )
       .replace(
-        /from\s*["']\.\/(access|auth-store|rules|time|progression|social-seed|social|response-media|media-limits|comments)["']/g,
+        /from\s*["']\.\/(access|auth-store|rules|time|progression|social-seed|social|response-media|media-limits|comments|response-engagement)["']/g,
         (_, n) => `from './${n}.mjs'`,
       );
     writeFileSync(

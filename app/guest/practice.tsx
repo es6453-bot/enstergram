@@ -6,6 +6,7 @@ import { ArrowUpRight } from "lucide-react";
 import { BrandMark } from "../brand-mark";
 import { words, hasLongWord, MAX_WORD_CHARACTERS } from "../../lib/rules";
 import { ResponseImage } from "../response-image";
+import { ResponseAwards } from "../response-engagement";
 import { easternDeadline } from "../../lib/time";
 type GuestData = Awaited<
   ReturnType<typeof import("../../lib/guest").guestData>
@@ -147,6 +148,7 @@ export default function Guest({ data }: { data: GuestData }) {
                         followers
                       </p>
                       {entry.effect_name && <small>{entry.effect_name}</small>}
+                      <ResponseAwards initial={JSON.parse(entry.awards)} />
                     </article>
                   ))
                 ) : (
