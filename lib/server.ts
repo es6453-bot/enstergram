@@ -14,7 +14,7 @@ import {
 } from "./time";
 import { processResponseImage } from "./response-media";
 import { MAX_RESPONSE_IMAGE_BYTES } from "./media-limits";
-import { addComment, removeComment } from "./comments";
+import { addComment, removeComment, roundCommentPages } from "./comments";
 import { roundReactions, setResponseAward, setResponseReaction } from "./response-engagement";
 import {
   socialState,
@@ -453,11 +453,13 @@ export async function feed(roundId: string, userId: string, votingOnly = false) 
       bySubmission.set(award.submission_id, list);
     }
     const profiles = new Map();
+    const commentPages = await roundCommentPages(db(), userId, roundId);
     for (const s of entries) {
       if (!profiles.has(s.user_id))
         profiles.set(s.user_id, await publicProfile(db(), s.user_id));
       s.profile = profiles.get(s.user_id);
       s.awards = bySubmission.get(s.submission_id) ?? [];
+      s.commentPage = commentPages.get(s.submission_id);
     }
     return {
       round: r,
@@ -493,10 +495,13 @@ export async function feed(roundId: string, userId: string, votingOnly = false) 
     userId,
   );
   const reactions = await roundReactions(db(), roundId, userId);
+  const commentPages = await roundCommentPages(db(), userId, roundId);
   return {
-    entries: shuffled.map(({ entry }) => reactions.has(entry.id)
-      ? { ...entry, reactions: reactions.get(entry.id) }
-      : entry),
+    entries: shuffled.map(({ entry }) => ({
+      ...entry,
+      ...(reactions.has(entry.id) ? { reactions: reactions.get(entry.id) } : {}),
+      ...(commentPages.has(entry.id) ? { commentPage: commentPages.get(entry.id) } : {}),
+    })),
     ballot: ballot
       ? { choices: JSON.stringify(JSON.parse(ballot.choices).slice(0, BALLOT_LABELS.length)) }
       : null,

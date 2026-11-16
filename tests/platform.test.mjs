@@ -224,6 +224,8 @@ test("anonymous comments support multiple pages, enforce round visibility, and a
     assert.equal(first.comments.length, 20);
     assert.deepEqual(first.comments[0], { id: 25, content: "Comment 25", own: false, canRemove: false });
     const older = await commentPage(db, "bob", "entry", first.next);
+    const votingComments = (await server.feed("round", "bob")).entries[0].commentPage;
+    assert.deepEqual(votingComments, await commentPage(db, "bob", "entry"));
     assert.equal(older.comments.length, 5);
     assert.equal(older.comments[0].own, true);
     assert.equal(older.next, null);
@@ -272,7 +274,8 @@ test("open ballots ignore former downvotes and reject new ones while past rounds
     assert.equal(past.score, -1);
     const { commentPage } = await import("../.test-runtime/platform/comments.mjs");
     await server.mutate("addComment", { submissionId: "open-entry", content: "After results" }, { id: "bob" });
-    assert.equal((await commentPage(globalThis.__platformDb, "alice", "open-entry")).comments.length, 1);
+    const resultComments = (await server.feed("open", "alice")).entries[0].commentPage;
+    assert.deepEqual(resultComments, await commentPage(globalThis.__platformDb, "alice", "open-entry"));
   } finally {
     client.close();
   }

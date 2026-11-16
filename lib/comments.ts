@@ -1,14 +1,45 @@
-import type { GameDatabase } from "./database";
+import type { GameDatabase, GameRow } from "./database";
 import { AccessError, isStaff, requireActive, roleFor } from "./access";
 
 export const MAX_COMMENT_LENGTH = 1000;
 const PAGE_SIZE = 20;
+export type Comment = { id: number; content: string; own: boolean; canRemove: boolean; hasImage?: boolean };
+export type CommentPage = { comments: Comment[]; next: number | null };
 const visibleResponse = (submission: "?" | "c.submission_id") => `SELECT s.id FROM submissions s JOIN rounds r ON r.id=s.round_id
   WHERE s.id=${submission} AND r.cancelled=0 AND r.closes<=? AND (
     r.ends>? OR (r.finalized IS NOT NULL AND EXISTS(
       SELECT 1 FROM results WHERE submission_id=s.id
     ))
   )`;
+
+function paginateComments(rows: GameRow[], staff: boolean): CommentPage {
+  const comments = rows.slice(0, PAGE_SIZE).map((row) => ({
+    id: row.id as number,
+    content: row.content as string,
+    own: !!row.own,
+    canRemove: staff || !!row.own,
+    ...(row.mime ? { hasImage: true } : {}),
+  }));
+  return { comments, next: rows.length > PAGE_SIZE ? comments.at(-1)!.id : null };
+}
+
+export async function roundCommentPages(db: GameDatabase, userId: string, roundId: string) {
+  const staff = isStaff(await roleFor(db, userId));
+  const { results } = await db.prepare(
+    `SELECT c.submission_id,c.id,c.content,c.user_id=? AS own,c.mime
+     FROM submissions s JOIN response_comments c ON c.id IN (
+       SELECT id FROM response_comments WHERE submission_id=s.id ORDER BY id DESC LIMIT ?
+     )
+     WHERE s.round_id=? ORDER BY c.id DESC`,
+  ).bind(userId, PAGE_SIZE + 1, roundId).all();
+  const groups = new Map<string, GameRow[]>();
+  for (const row of results) {
+    const group = groups.get(row.submission_id) ?? [];
+    group.push(row);
+    groups.set(row.submission_id, group);
+  }
+  return new Map([...groups].map(([id, rows]) => [id, paginateComments(rows, staff)]));
+}
 
 export async function commentPage(
   db: GameDatabase, userId: string, submissionId: string, before?: number,
@@ -22,14 +53,7 @@ export async function commentPage(
     `SELECT id,content,user_id=? AS own,mime FROM response_comments
      WHERE submission_id=? AND id<? ORDER BY id DESC LIMIT ?`,
   ).bind(userId, submissionId, before ?? Number.MAX_SAFE_INTEGER, PAGE_SIZE + 1).all();
-  const comments = results.slice(0, PAGE_SIZE).map((row) => ({
-    id: row.id as number,
-    content: row.content as string,
-    own: !!row.own,
-    canRemove: staff || !!row.own,
-    ...(row.mime ? { hasImage: true } : {}),
-  }));
-  return { comments, next: results.length > PAGE_SIZE ? comments.at(-1)!.id : null };
+  return paginateComments(results, staff);
 }
 
 export async function addComment(

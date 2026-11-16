@@ -1380,6 +1380,8 @@ svg {
 }
 .response-comments {
   margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
 }
 .response-engagement {
   margin-block: 12px;
@@ -1406,7 +1408,9 @@ svg {
 .comment-thread {
   display: grid;
   gap: 12px;
-  margin-top: 12px;
+}
+.comment-thread > .secondary {
+  justify-self: start;
 }
 .comment-thread textarea {
   width: 100%;
@@ -1418,8 +1422,10 @@ svg {
   margin: 0;
 }
 .comment-thread li {
-  border-top: 1px solid #343040;
   padding-block: 10px;
+}
+.comment-thread li + li {
+  border-top: 1px solid var(--line);
 }
 .comment-thread li p {
   white-space: pre-wrap;

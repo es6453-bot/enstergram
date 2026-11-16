@@ -1088,7 +1088,7 @@ export default function Game({ view = "shop" }: { view?: string }) {
                                     {s.effect_type !== "media_response" && `: ${s.parameter}`}
                                   </span>
                                 )}
-                                <ResponseComments submissionId={s.id} />
+                                <ResponseComments submissionId={s.id} initialPage={s.commentPage} />
                               </div>
                             ))}
                           </div>
@@ -1221,7 +1221,7 @@ export default function Game({ view = "shop" }: { view?: string }) {
                                 </p>
                               </details>
                               <ResponseAwards submissionId={s.submission_id} initial={s.awards ?? []} canManage={admin} />
-                              <ResponseComments submissionId={s.submission_id} />
+                              <ResponseComments submissionId={s.submission_id} initialPage={s.commentPage} />
                             </div>
                           </div>
                         ))}
