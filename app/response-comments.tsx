@@ -1,6 +1,7 @@
 "use client";
 /* eslint-disable @next/next/no-img-element */
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { MessageCircle } from "lucide-react";
 import type { Comment, CommentPage } from "../lib/comments";
 import { MAX_RESPONSE_IMAGE_BYTES, RESPONSE_IMAGE_ACCEPT } from "../lib/media-limits";
 
@@ -15,6 +16,7 @@ export function ResponseComments({ submissionId, initialPage }: {
   const [attachmentVersion, setAttachmentVersion] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const composer = useRef<HTMLDetailsElement>(null);
 
   async function load(before?: number) {
     const query = new URLSearchParams({ response: submissionId });
@@ -75,57 +77,64 @@ export function ResponseComments({ submissionId, initialPage }: {
             </li>
           ))}
         </ul>
-      ) : !busy && !error && <p className="muted">No comments yet.</p>}
+      ) : null}
       {next !== null && (
         <button type="button" className="secondary" disabled={busy}
           onClick={() => void run(() => load(next))}>Load older comments</button>
       )}
-      <form onSubmit={(event) => {
-        event.preventDefault();
-        if ((!draft.trim() && !image) || busy) return;
-        void run(async () => {
-          if (image) {
-            const form = new FormData();
-            form.set("action", "addComment");
-            form.set("submissionId", submissionId);
-            form.set("content", draft);
-            form.set("image", image);
-            await change(form);
-          } else {
-            await change({ action: "addComment", submissionId, content: draft });
-          }
-          setDraft("");
-          setImage(null);
-          setAttachmentVersion((previous) => previous + 1);
-          await load();
-        });
-      }}>
-        <label className="form-label">
-          Add an anonymous comment
-          <textarea maxLength={1000} rows={2} value={draft} disabled={busy}
-            onChange={(event) => setDraft(event.target.value)} />
-        </label>
-        <label className="form-label">
-          Attach a GIF or image (up to 2 MB)
-          <input key={attachmentVersion} type="file" accept={RESPONSE_IMAGE_ACCEPT} disabled={busy}
-            onChange={(event) => {
-              const file = event.currentTarget.files?.[0];
-              if (file && (!file.size || file.size > MAX_RESPONSE_IMAGE_BYTES)) {
-                setError("Choose an image up to 2 MB.");
-                event.currentTarget.value = "";
-                setImage(null);
-                return;
-              }
-              setError("");
-              setImage(file ?? null);
-            }} />
-        </label>
-        {image && <button type="button" className="secondary" disabled={busy} onClick={() => {
-          setImage(null);
-          setAttachmentVersion((previous) => previous + 1);
-        }}>Remove attachment</button>}
-        <button className="primary" disabled={busy || (!draft.trim() && !image)}>Post comment</button>
-      </form>
+      <details className="comment-composer" ref={composer}>
+        <summary className="secondary"><MessageCircle size={16} aria-hidden="true" /> Comments</summary>
+        <form onSubmit={(event) => {
+          event.preventDefault();
+          if ((!draft.trim() && !image) || busy) return;
+          void run(async () => {
+            if (image) {
+              const form = new FormData();
+              form.set("action", "addComment");
+              form.set("submissionId", submissionId);
+              form.set("content", draft);
+              form.set("image", image);
+              await change(form);
+            } else {
+              await change({ action: "addComment", submissionId, content: draft });
+            }
+            setDraft("");
+            setImage(null);
+            setAttachmentVersion((previous) => previous + 1);
+            await load();
+            if (composer.current?.open) {
+              composer.current.open = false;
+              composer.current.querySelector("summary")?.focus();
+            }
+          });
+        }}>
+          <label className="form-label">
+            Add an anonymous comment
+            <textarea maxLength={1000} rows={2} value={draft} disabled={busy}
+              onChange={(event) => setDraft(event.target.value)} />
+          </label>
+          <label className="form-label">
+            Attach a GIF or image (up to 2 MB)
+            <input key={attachmentVersion} type="file" accept={RESPONSE_IMAGE_ACCEPT} disabled={busy}
+              onChange={(event) => {
+                const file = event.currentTarget.files?.[0];
+                if (file && (!file.size || file.size > MAX_RESPONSE_IMAGE_BYTES)) {
+                  setError("Choose an image up to 2 MB.");
+                  event.currentTarget.value = "";
+                  setImage(null);
+                  return;
+                }
+                setError("");
+                setImage(file ?? null);
+              }} />
+          </label>
+          {image && <button type="button" className="secondary" disabled={busy} onClick={() => {
+            setImage(null);
+            setAttachmentVersion((previous) => previous + 1);
+          }}>Remove attachment</button>}
+          <button className="primary" disabled={busy || (!draft.trim() && !image)}>Post comment</button>
+        </form>
+      </details>
       {error && <p role="alert">{error}</p>}
     </section>
   );

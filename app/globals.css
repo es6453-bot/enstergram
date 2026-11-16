@@ -1405,6 +1405,16 @@ svg {
 .comment-thread form > .form-label {
   margin-bottom: 10px;
 }
+.comment-composer > summary {
+  list-style: none;
+  cursor: pointer;
+}
+.comment-composer > summary::-webkit-details-marker {
+  display: none;
+}
+.comment-composer > form {
+  margin-top: 12px;
+}
 .comment-thread {
   display: grid;
   gap: 12px;
