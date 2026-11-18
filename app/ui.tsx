@@ -1079,15 +1079,6 @@ export default function Game({ view = "shop" }: { view?: string }) {
                                   <VotingReactions submissionId={s.id} initial={s.reactions ?? []} />
                                 </div>
                                 {s.has_media ? <ResponseImage id={s.id} /> : <h3>{s.content}</h3>}
-                                {s.effect_name && (
-                                  <span className="effect-badge">
-                                    <Zap size={13} />
-                                    {currencyCopy(s.effect_name)} ·{" "}
-                                    {effectLabels[s.effect_type] ||
-                                      s.effect_type}
-                                    {s.effect_type !== "media_response" && `: ${s.parameter}`}
-                                  </span>
-                                )}
                                 <ResponseComments submissionId={s.id} initialPage={s.commentPage} />
                               </div>
                             ))}

@@ -467,9 +467,9 @@ export async function feed(roundId: string, userId: string, votingOnly = false) 
     };
   }
   if (phase(r) !== "VOTING") return { entries: [] };
-  // Only opaque submission IDs, content and public effect snapshots cross this boundary.
+  // Voting omits authors, scores and power-up activation details.
   const entries = await all(
-    "SELECT s.id,s.content,e.name AS effect_name,e.type AS effect_type,e.parameter,m.submission_id IS NOT NULL AS has_media FROM submissions s LEFT JOIN effects e ON e.submission_id=s.id AND e.type<>'downvote_shield' LEFT JOIN submission_media m ON m.submission_id=s.id WHERE s.round_id=? AND s.user_id<>?",
+    "SELECT s.id,s.content,m.submission_id IS NOT NULL AS has_media FROM submissions s LEFT JOIN submission_media m ON m.submission_id=s.id WHERE s.round_id=? AND s.user_id<>?",
     roundId,
     userId,
   );

@@ -71,7 +71,7 @@ Names, prompts, prices, effect parameters, tier thresholds, cosmetics and balanc
 - Signed-in players can post anonymous comments on response cards during voting and after finalization. Threads support any number of comments and load 20 at a time. Players can delete their own comments and staff can remove any comment.
 - GIF Response lets a player upload a GIF, PNG, JPEG or WebP up to 2 MB as their entry. The first successful upload consumes one item. Replacements are free until submissions close. The server re-encodes images without metadata and serves them on the same origin, first to the author, then to eligible signed-in viewers during voting, and publicly once results are finalized.
 - Round rules and activated effects are immutable snapshots. New balance edits do not rewrite finalized scores or completed transactions.
-- Active voting exposes only opaque response IDs, content and applicable competitive effects. Decorated profiles appear only on one's own profile and finalized results.
+- Voting cards expose response content, anonymous comments and reactions. Author identities, scores and power-up activation details become available with finalized results.
 - Daily activity counts once per Eastern date for a valid submission or ballot. Freezes preserve the streak without adding activity days or rewards. Missing a day never deducts Likes, Followers or earned cosmetics.
 - Frozen and missed-day decisions use the versioned settings effective on each day. The default weekly refill is one freeze each Monday, capped at one banked freeze.
 

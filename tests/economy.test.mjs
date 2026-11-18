@@ -467,6 +467,10 @@ test("ballots allow partial edits, reject repeats and self-votes, anonymous feed
   round(raw);
   submit(raw, "alice");
   submit(raw, "bob"); // transition fixture clock without altering a published snapshot
+  stock(raw, "bob", "boost");
+  await server.mutate("activate", {
+    revision: 1, roundId: "r", submissionId: "r:bob", itemId: "boost",
+  }, { id: "bob" });
   raw.exec("DROP TRIGGER round_snapshot");
   raw.prepare("UPDATE rounds SET closes=?").run(Date.now() - 1000);
   await assert.rejects(
@@ -500,15 +504,19 @@ test("ballots allow partial edits, reject repeats and self-votes, anonymous feed
   const feed = await server.feed("r", "alice");
   assert.deepEqual(Object.keys(feed.entries[0]).sort(), [
     "content",
-    "effect_name",
-    "effect_type",
     "has_media",
     "id",
-    "parameter",
   ]);
   assert.equal(feed.entries[0].id, "r:bob");
   assert.ok(!JSON.stringify(feed).includes("user_id"));
   assert.ok(!JSON.stringify(feed).includes("voter_id"));
+  assert.ok(!JSON.stringify(feed).includes("positive_multiplier"));
+  raw.prepare("UPDATE rounds SET ends=? WHERE id='r'").run(Date.now() - 1);
+  const results = await server.feed("r", "alice");
+  const boosted = results.entries.find((entry) => entry.submission_id === "r:bob");
+  assert.equal(boosted.effect_type, "positive_multiplier");
+  assert.equal(boosted.parameter, 2);
+  assert.equal(boosted.score, 4);
 });
 test("finalization, Brand Deal, follower awards, and reward issuance are idempotent", async () => {
   const raw = bind(fresh());
@@ -1256,7 +1264,7 @@ test("decorated profiles appear only in finalized results, never in anonymous vo
   const anonymous = await server.feed("r", "alice");
   assert.deepEqual(
     Object.keys(anonymous.entries[0]).sort(),
-    ["id", "content", "effect_name", "effect_type", "has_media", "parameter"].sort(),
+    ["id", "content", "has_media"].sort(),
   );
   for (const term of [
     "Decorated Bob",

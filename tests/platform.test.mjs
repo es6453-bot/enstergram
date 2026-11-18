@@ -182,7 +182,7 @@ test("GIF power-up spends inventory once and exposes media only in the appropria
     await client.execute({ sql: "UPDATE rounds SET closes=? WHERE id='round'", args: [Date.now() - 100] });
     const voting = await server.feed("round", "bob");
     assert.deepEqual(voting.entries, [{
-      id: entry.id, content: "", effect_name: "GIF", effect_type: "media_response", parameter: 1, has_media: 1,
+      id: entry.id, content: "", has_media: 1,
     }]);
     assert.equal((await readResponseImage(db, entry.id, "bob")).mime, "image/webp");
     assert.equal(await readResponseImage(db, entry.id), null);
