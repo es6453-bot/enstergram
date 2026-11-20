@@ -359,6 +359,10 @@ export default function Game({ view = "shop" }: { view?: string }) {
   const selectedMedia = mediaOptions.find((x: any) => x.item_id === mediaItemId) || mediaOptions[0];
   const mediaActive = activeEffect?.type === "media_response";
   const instantPurchase = modal?.type === "purchase" && !!current && !activeEffect;
+  const activationRound = modal?.type === "activate"
+    ? rounds.find((r: any) => r.id === modal.roundId)
+    : undefined;
+  const canActivate = !!activationRound && activationRound.id === current?.id && !activeEffect;
   const canUpload = mediaActive || (!activeEffect && !!selectedMedia);
   const longWord = hasLongWord(content);
   const wordCount = words(content);
@@ -1355,7 +1359,7 @@ export default function Game({ view = "shop" }: { view?: string }) {
       )}
       {modal?.type === "activate" && (
         <Modal
-          title="Choose your moment."
+          title="Activate for the current prompt?"
           close={() => !busy && setModal(null)}
         >
           <h3>{modal.item.name}</h3>
@@ -1366,46 +1370,29 @@ export default function Game({ view = "shop" }: { view?: string }) {
             activation for the round. This cannot be undone. Other inventory
             stays yours.
           </div>
-          <label className="form-label">
-            Choose a prompt
-            <select
-              value={modal.roundId}
-              onChange={(e) => setModal({ ...modal, roundId: e.target.value })}
-            >
-              <option value="">Select a round</option>
-              {rounds
-                .filter(
-                  (r: any) =>
-                    r.phase === "SUBMISSION" &&
-                    !data.active.some((a: any) => a.round_id === r.id),
-                )
-                .map((r: any) => (
-                  <option key={r.id} value={r.id}>
-                    Round #{r.number} · {r.prompt}
-                  </option>
-                ))}
-            </select>
-          </label>
+          {activationRound && (
+            <div className="confirm-lines">
+              <p><span>Prompt</span><b>Round #{activationRound.number}</b></p>
+              <blockquote>{activationRound.prompt}</blockquote>
+            </div>
+          )}
           {data.mine.find((s: any) => s.round_id === modal.roundId) && (
             <blockquote>
               {data.mine.find((s: any) => s.round_id === modal.roundId).content}
             </blockquote>
           )}
           <p className="help">
-            The power-up applies to your response for this prompt. Activate before
-            submissions close, then write or upload your response.
+            {canActivate
+              ? "Automatically applies to your response for the current prompt. Activate before submissions close, then write or upload your response."
+              : !current
+                ? "There is no prompt accepting submissions right now. Your item stays in your inventory."
+                : activeEffect
+                  ? "You already have a power-up active for the current prompt. Your item stays in your inventory."
+                  : "The current prompt has changed. Close this window and activate again to review the new prompt."}
           </p>
           <button
             className="primary full"
-            disabled={
-              busy ||
-              !rounds.some(
-                (r: any) =>
-                  r.id === modal.roundId &&
-                  r.phase === "SUBMISSION" &&
-                  !data.active.some((a: any) => a.round_id === r.id),
-              )
-            }
+            disabled={busy || !canActivate}
             onClick={() =>
               act(
                 {
@@ -1417,11 +1404,11 @@ export default function Game({ view = "shop" }: { view?: string }) {
                   itemId: modal.item.item_id,
                   revision: modal.item.revision,
                 },
-                "Power-up activated. One item consumed.",
+                "Power-up activated for the current prompt. One item consumed.",
               )
             }
           >
-            Confirm activation <Zap size={16} />
+            Activate for current prompt <Zap size={16} />
           </button>
         </Modal>
       )}
