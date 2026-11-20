@@ -174,6 +174,22 @@ test("GIF power-up spends inventory once and exposes media only in the appropria
     assert.equal((await sharp(Buffer.from(saved.image), { animated: true }).metadata()).pages, 2);
     assert.equal(await readResponseImage(db, entry.id), null);
     assert.equal(await readResponseImage(db, entry.id, "bob"), null);
+    await client.batch([
+      "INSERT INTO auth_identities VALUES('google','alice-subject','alice',1)",
+      "INSERT INTO google_accounts VALUES('alice-subject','alice','alice@example.com',1)",
+      "INSERT INTO staff_roles VALUES('alice','owner','alice-subject','alice',1)",
+      "INSERT INTO auth_identities VALUES('google','eve-subject','eve',1)",
+      "INSERT INTO google_accounts VALUES('eve-subject','eve','eve@example.com',1)",
+      "INSERT INTO staff_roles VALUES('eve','admin','eve-subject','alice',1)",
+    ], "write");
+    assert.equal((await readResponseImage(db, entry.id, "eve")).mime, "image/gif");
+    assert.equal((await server.awardFeed("round", "eve")).entries[0].has_media, 1);
+    await server.mutate("responseAward", { submissionId: entry.id, award: "skull", enabled: true }, { id: "eve" });
+    await server.mutate("responseAward", { submissionId: entry.id, award: "skull", enabled: false }, { id: "eve" });
+    await client.execute("DELETE FROM staff_roles WHERE user_id='eve'");
+    assert.equal(await readResponseImage(db, entry.id, "eve"), null);
+    await assert.rejects(server.awardFeed("round", "eve"), /Administrator/);
+    await assert.rejects(server.mutate("responseAward", { submissionId: entry.id, award: "skull", enabled: true }, { id: "eve" }), /Administrator/);
     await assert.rejects(server.mutate("submit", { roundId: "round", content: "Back to text" }, { id: "alice" }), /another GIF or image/);
     const png = await sharp({ create: { width: 4, height: 4, channels: 3, background: "orange" } }).png().toBuffer();
     assert.equal((await processResponseImage(png)).mime, "image/webp");
@@ -337,13 +353,33 @@ test("response awards, voting reactions, the winner badge and comment images res
       submissionId: "entry", award: "reddit_gold", enabled,
     }, { id });
     await assert.rejects(react("bob"), /during voting/);
-    await assert.rejects(award("staff"), /finalized/);
+    await assert.rejects(award("bob"), /Administrator/);
+    await assert.rejects(server.awardFeed("round", "bob"), /Administrator/);
+    await Promise.all([award("staff"), award("staff")]);
+    const staffEntries = (await server.awardFeed("round", "staff")).entries;
+    assert.equal(staffEntries.length, 2);
+    assert.deepEqual(staffEntries.find((s) => s.id === "entry").awards, ["reddit_gold"]);
+    for (const entry of staffEntries) {
+      assert.deepEqual(Object.keys(entry).sort(), ["awards", "content", "has_media", "id"]);
+    }
+    assert.deepEqual((await server.feed("round", "bob")).entries, []);
+    assert.equal((await server.one("SELECT COUNT(*) AS n FROM achievement_notifications WHERE kind='award'")).n, 1);
+    await award("staff", false);
     await client.execute({ sql: "UPDATE rounds SET closes=? WHERE id='round'", args: [now - 1000] });
     await assert.rejects(react("alice"), /other players/);
     await Promise.all([react("bob"), react("bob"), react("staff")]);
+    await Promise.all([award("staff"), award("staff")]);
     const votingEntry = (await server.feed("round", "bob")).entries[0];
+    assert.deepEqual(votingEntry.awards, ["reddit_gold"]);
     assert.deepEqual(votingEntry.reactions, [{ reaction: "heart", total: 2, own: true }]);
     assert.equal(votingEntry.user_id, undefined);
+    assert.equal(votingEntry.name, undefined);
+    assert.equal(votingEntry.score, undefined);
+    assert.equal(votingEntry.rank, undefined);
+    await award("staff", false);
+    assert.deepEqual((await server.feed("round", "bob")).entries[0].awards ?? [], []);
+    await award("staff");
+    await assert.rejects(server.mutate("responseAward", { submissionId: "missing", award: "skull", enabled: true }, { id: "staff" }), /available round/);
     await react("staff", false);
     await assert.rejects(award("bob"), /Administrator/);
     const gif = await sharp({ create: { width: 4, height: 4, channels: 3, background: "orange" } }).gif().toBuffer();

@@ -66,8 +66,12 @@ export async function readResponseImage(
        (r.finalized IS NOT NULL AND r.ends<=? AND EXISTS(
          SELECT 1 FROM results WHERE submission_id=s.id
        )) OR (? IS NOT NULL AND (
-         s.user_id=? OR (r.closes<=? AND r.ends>?)
+         s.user_id=? OR (r.closes<=? AND r.ends>?) OR EXISTS(
+           SELECT 1 FROM staff_roles sr JOIN auth_identities ai ON ai.user_id=sr.user_id
+           AND ai.provider='google' AND ai.subject=sr.google_subject
+           WHERE sr.user_id=? AND sr.role IN ('owner','admin')
+         )
        ) AND NOT EXISTS(SELECT 1 FROM player_suspensions WHERE user_id=?))
      )`,
-  ).bind(submissionId, now, userId ?? null, userId ?? null, now, now, userId ?? null).first();
+  ).bind(submissionId, now, userId ?? null, userId ?? null, now, now, userId ?? null, userId ?? null).first();
 }

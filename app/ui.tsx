@@ -1083,6 +1083,7 @@ export default function Game({ view = "shop" }: { view?: string }) {
                                   <VotingReactions submissionId={s.id} initial={s.reactions ?? []} />
                                 </div>
                                 {s.has_media ? <ResponseImage id={s.id} /> : <h3>{s.content}</h3>}
+                                <ResponseAwards key={`${s.id}:${(s.awards ?? []).join(",")}`} submissionId={s.id} initial={s.awards ?? []} canManage={admin} />
                                 <ResponseComments submissionId={s.id} initialPage={s.commentPage} />
                               </div>
                             ))}
@@ -1679,6 +1680,7 @@ function Admin({
           "inventory",
           "profiles",
           "rounds",
+          "awards",
           "moderation",
           "audit",
         ].map((t) => (
@@ -1691,7 +1693,9 @@ function Admin({
           </button>
         ))}
       </div>
-      {tab === "moderation" ? (
+      {tab === "awards" ? (
+        <AdminAwards rounds={data.rounds} />
+      ) : tab === "moderation" ? (
         <Moderation data={data} busy={busy} act={act} />
       ) : tab === "prompts" ? (
         <>
@@ -2166,6 +2170,54 @@ function Admin({
         </>
       )}
     </main>
+  );
+}
+function AdminAwards({ rounds }: { rounds: any[] }) {
+  const available = rounds.filter((r) => !r.cancelled);
+  const [roundId, setRoundId] = useState(available[0]?.id || "");
+  const [refresh, setRefresh] = useState(0);
+  const [page, setPage] = useState<{ roundId: string; entries: any[] } | null>(null);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    if (!roundId) return;
+    const controller = new AbortController();
+    setPage(null);
+    setError("");
+    void (async () => {
+      try {
+        const response = await fetch(`/api/game?round=${encodeURIComponent(roundId)}&view=awards`, {
+          signal: controller.signal,
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || "Could not load responses.");
+        if (!controller.signal.aborted) setPage({ roundId, entries: result.entries });
+      } catch (cause) {
+        if (!controller.signal.aborted) setError((cause as Error).message);
+      }
+    })();
+    return () => controller.abort();
+  }, [roundId, refresh]);
+  return (
+    <section>
+      <h2>Developer awards.</h2>
+      <p className="muted">Give or remove awards as soon as a response is submitted, during voting, or after results. Awards do not change scores. Authors stay anonymous until results.</p>
+      <label className="form-label">Round
+        <select value={roundId} onChange={(e) => setRoundId(e.target.value)}>
+          {available.map((r) => <option key={r.id} value={r.id}>Round #{r.number} · {r.prompt}</option>)}
+        </select>
+      </label>
+      <button className="secondary" onClick={() => setRefresh((v) => v + 1)}>Refresh responses</button>
+      {error ? <p role="alert">{error}</p> : !roundId ? <p>No rounds available.</p>
+        : !page || page.roundId !== roundId ? <p role="status">Loading responses…</p>
+          : page.entries.length === 0 ? <p>No responses yet.</p>
+            : page.entries.map((s, index) => (
+              <article className="panel anonymous-card" key={`${refresh}:${s.id}`}>
+                <span className="anonymous-label">RESPONSE · {index + 1}</span>
+                {s.has_media ? <ResponseImage id={s.id} /> : <h3>{s.content}</h3>}
+                <ResponseAwards submissionId={s.id} initial={s.awards} canManage />
+              </article>
+            ))}
+    </section>
   );
 }
 function Moderation({ data, busy, act }: any) {

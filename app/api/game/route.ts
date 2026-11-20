@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { getCurrentUser } from "../../../lib/current-user";
-import { setup, state, mutate, feed, stmt, submitMedia, submitCommentMedia } from "../../../lib/server";
+import { setup, state, mutate, feed, awardFeed, stmt, submitMedia, submitCommentMedia } from "../../../lib/server";
 import { currencyCopy } from "../../../lib/rules";
 import { AccessError } from "../../../lib/access";
 import { MAX_RESPONSE_IMAGE_BYTES } from "../../../lib/media-limits";
@@ -20,7 +20,9 @@ export async function GET(request: Request) {
     const url = new URL(request.url);
     return Response.json(
       url.searchParams.has("round")
-        ? await feed(url.searchParams.get("round")!, user.id, url.searchParams.get("view") === "vote")
+        ? url.searchParams.get("view") === "awards"
+          ? await awardFeed(url.searchParams.get("round")!, user.id)
+          : await feed(url.searchParams.get("round")!, user.id, url.searchParams.get("view") === "vote")
         : await state(user.id),
       { headers: { "Cache-Control": "no-store" } },
     );

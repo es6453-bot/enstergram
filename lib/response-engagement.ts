@@ -1,4 +1,5 @@
 import type { GameDatabase } from "./database";
+import { requireStaff } from "./access";
 
 export const RESPONSE_AWARDS = [
   { key: "reddit_gold", label: "Reddit Gold", icon: "🏅" },
@@ -15,6 +16,20 @@ export const RESPONSE_REACTIONS = [
 ] as const;
 
 export type Reaction = { reaction: string; total: number; own: boolean };
+
+export async function roundAwards(db: GameDatabase, roundId: string) {
+  const { results } = await db.prepare(
+    `SELECT a.submission_id,a.award FROM response_awards a
+     JOIN submissions s ON s.id=a.submission_id WHERE s.round_id=? ORDER BY a.award`,
+  ).bind(roundId).all();
+  const bySubmission = new Map<string, string[]>();
+  for (const row of results) {
+    const list = bySubmission.get(row.submission_id) ?? [];
+    list.push(row.award);
+    bySubmission.set(row.submission_id, list);
+  }
+  return bySubmission;
+}
 
 export async function roundReactions(db: GameDatabase, roundId: string, userId: string) {
   const { results } = await db.prepare(
@@ -53,14 +68,14 @@ export async function setResponseReaction(
 export async function setResponseAward(
   db: GameDatabase, userId: string, submissionId: unknown, award: unknown, enabled: unknown,
 ) {
+  await requireStaff(db, userId);
   if (typeof submissionId !== "string" || submissionId.length > 100 ||
       !RESPONSE_AWARDS.some((item) => item.key === award) || typeof enabled !== "boolean")
     throw new Error("Choose a valid award.");
-  const allowed = `SELECT f.submission_id AS id FROM results f JOIN rounds r ON r.id=f.round_id
-    WHERE f.submission_id=? AND r.cancelled=0 AND r.finalized IS NOT NULL
-    AND r.ends<=unixepoch('subsec')*1000`;
+  const allowed = `SELECT s.id FROM submissions s JOIN rounds r ON r.id=s.round_id
+    WHERE s.id=? AND r.cancelled=0`;
   if (!(await db.prepare(allowed).bind(submissionId).first()))
-    throw new Error("Awards are available on finalized responses.");
+    throw new Error("Choose a response from an available round.");
   const staff = "EXISTS(SELECT 1 FROM staff_roles WHERE user_id=? AND role IN ('owner','admin'))";
   if (enabled)
     await db.prepare(

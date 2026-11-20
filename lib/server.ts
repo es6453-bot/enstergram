@@ -16,7 +16,7 @@ import {
 import { processResponseImage } from "./response-media";
 import { MAX_RESPONSE_IMAGE_BYTES } from "./media-limits";
 import { addComment, removeComment, roundCommentPages } from "./comments";
-import { roundReactions, setResponseAward, setResponseReaction } from "./response-engagement";
+import { roundAwards, roundReactions, setResponseAward, setResponseReaction } from "./response-engagement";
 import {
   socialState,
   socialMutation,
@@ -469,6 +469,16 @@ export async function state(userId: string) {
       : [],
   };
 }
+export async function awardFeed(roundId: string, userId: string) {
+  await requireStaff(db(), userId);
+  const entries = await all(
+    `SELECT s.id,s.content,m.submission_id IS NOT NULL AS has_media FROM submissions s
+     JOIN rounds r ON r.id=s.round_id LEFT JOIN submission_media m ON m.submission_id=s.id
+     WHERE s.round_id=? AND r.cancelled=0 ORDER BY s.id`, roundId,
+  );
+  const awards = await roundAwards(db(), roundId);
+  return { entries: entries.map((s) => ({ ...s, awards: awards.get(s.id) ?? [] })) };
+}
 export async function feed(roundId: string, userId: string, votingOnly = false) {
   await requireActive(db(), userId);
   const r = await one("SELECT * FROM rounds WHERE id=?", roundId);
@@ -533,10 +543,12 @@ export async function feed(roundId: string, userId: string, votingOnly = false) 
     userId,
   );
   const reactions = await roundReactions(db(), roundId, userId);
+  const awards = await roundAwards(db(), roundId);
   const commentPages = await roundCommentPages(db(), userId, roundId);
   return {
     entries: shuffled.map(({ entry }) => ({
       ...entry,
+      ...(awards.has(entry.id) ? { awards: awards.get(entry.id) } : {}),
       ...(reactions.has(entry.id) ? { reactions: reactions.get(entry.id) } : {}),
       ...(commentPages.has(entry.id) ? { commentPage: commentPages.get(entry.id) } : {}),
     })),
