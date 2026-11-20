@@ -120,6 +120,13 @@
       "when": 1795145481432,
       "tag": "0016_instant_word_expansion_and_early_results",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "6",
+      "when": 1795147474217,
+      "tag": "0017_instant_all_powerups",
+      "breakpoints": true
     }
   ]
 }

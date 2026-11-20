@@ -350,6 +350,7 @@ export default function Game({ view = "shop" }: { view?: string }) {
         (filter === "owned" && stock(x.id) > 0)),
   );
   const savedResponse = data?.mine.find((s: any) => s.round_id === currentId);
+  const hasSavedImage = !!savedResponse?.has_media;
   const mediaOptions = (data?.inventory || []).filter(
     (x: any) => x.effect === "media_response" && x.enabled &&
       (!x.available_from || x.available_from <= data.serverNow) &&
@@ -357,8 +358,7 @@ export default function Game({ view = "shop" }: { view?: string }) {
   );
   const selectedMedia = mediaOptions.find((x: any) => x.item_id === mediaItemId) || mediaOptions[0];
   const mediaActive = activeEffect?.type === "media_response";
-  const instantWordPurchase = modal?.type === "purchase" &&
-    modal.item.effect === "word_limit" && !!current && !activeEffect;
+  const instantPurchase = modal?.type === "purchase" && !!current && !activeEffect;
   const canUpload = mediaActive || (!activeEffect && !!selectedMedia);
   const longWord = hasLongWord(content);
   const wordCount = words(content);
@@ -371,7 +371,9 @@ export default function Game({ view = "shop" }: { view?: string }) {
       form.set("itemId", selectedMedia.item_id);
       form.set("revision", String(selectedMedia.revision));
     }
-    void act(form, mediaActive ? "Image response updated." : "Image response submitted. One power-up consumed.")
+    void act(form, mediaActive
+      ? hasSavedImage ? "Image response updated." : "Image response submitted."
+      : "Image response submitted. One power-up consumed.")
       .then((ok) => { if (ok) setImage(null); });
   };
   const inventoryView = view === "inventory" || tab === "inventory";
@@ -627,10 +629,6 @@ export default function Game({ view = "shop" }: { view?: string }) {
                               quantity={x.quantity}
                               inventory
                               onClick={() => {
-                                if (x.effect === "media_response") {
-                                  window.location.assign("/submit");
-                                  return;
-                                }
                                 setModal({
                                   type: "activate",
                                   item: x,
@@ -990,7 +988,7 @@ export default function Game({ view = "shop" }: { view?: string }) {
                               </label>
                             )}
                             <label className="form-label">
-                              {mediaActive ? "Replace your GIF or image" : "Or use a GIF or image power-up"}
+                              {hasSavedImage ? "Replace your GIF or image" : mediaActive ? "Upload your GIF or image" : "Or use a GIF or image power-up"}
                               <input
                                 key={`${currentId}:${savedResponse?.updated || 0}`}
                                 type="file"
@@ -1008,7 +1006,7 @@ export default function Game({ view = "shop" }: { view?: string }) {
                             </label>
                             <p className="help">GIF, PNG, JPEG, or WebP. Up to 2 MB.</p>
                             <button className="secondary" disabled={busy || !image} onClick={() => setModal({ type: "image", roundId: currentId })}>
-                              <ImageIcon size={16} /> {mediaActive ? "Review replacement" : "Review image response"}
+                              <ImageIcon size={16} /> {hasSavedImage ? "Review replacement" : "Review image response"}
                             </button>
                           </div>
                         )}
@@ -1028,7 +1026,7 @@ export default function Game({ view = "shop" }: { view?: string }) {
                               ? "You can still submit a text response this round."
                               : activeEffect
                                 ? `One item consumed. This round’s activation slot is used. ${benefit({ ...activeEffect, effect: activeEffect.type })}.`
-                                : "Word expansion can be activated before you write. Save a response before using a score or Likes power-up. Image power-ups activate when you upload."}
+                                : "Activate any owned power-up for this prompt before submissions close. You can write or upload your response afterwards."}
                           </p>
                         </div>
                         <a className="secondary" href="/inventory">
@@ -1288,8 +1286,8 @@ export default function Game({ view = "shop" }: { view?: string }) {
           </div>
           <div className="info-bar">
             <Info size={18} />
-            {instantWordPurchase
-              ? `Buy & activate raises this prompt’s limit to ${modal.item.parameter} words immediately, consumes one item, and uses your one power-up for Round #${current.number}. You can write your response afterwards.`
+            {instantPurchase
+              ? `${benefit(modal.item)} for Round #${current.number}. Buy & activate consumes one item immediately and uses your one power-up for this prompt. You can submit your response afterwards.`
               : "Purchasing adds one item to your inventory. It is consumed when you confirm activation."}
           </div>
           <button
@@ -1302,10 +1300,10 @@ export default function Game({ view = "shop" }: { view?: string }) {
                   itemId: modal.item.id,
                   key: modal.key,
                   revision: modal.item.revision,
-                  ...(instantWordPurchase ? { activateRoundId: current.id } : {}),
+                  ...(instantPurchase ? { activateRoundId: current.id } : {}),
                 },
-                instantWordPurchase
-                  ? `${modal.item.name} is active for the current prompt. You can now use ${modal.item.parameter} words.`
+                instantPurchase
+                  ? `${modal.item.name} is active for the current prompt. ${benefit(modal.item)}.`
                   : `${modal.item.name} is in your inventory.`,
               )
             }
@@ -1314,12 +1312,12 @@ export default function Game({ view = "shop" }: { view?: string }) {
               ? "Earn more Likes to purchase"
               : busy
                 ? "Purchasing…"
-                : instantWordPurchase
+                : instantPurchase
                   ? `Buy & activate now · ${modal.item.cost} Likes`
                   : `Confirm · ${modal.item.cost} Likes`}
             <ArrowRight size={16} />
           </button>
-          {instantWordPurchase && (
+          {instantPurchase && (
             <button className="secondary full" disabled={busy || balance < modal.item.cost}
               onClick={() => act({
                 action: "purchase", itemId: modal.item.id, key: modal.key, revision: modal.item.revision,
@@ -1341,15 +1339,17 @@ export default function Game({ view = "shop" }: { view?: string }) {
         </Modal>
       )}
       {modal?.type === "image" && image && modal.roundId === currentId && (
-        <Modal title={mediaActive ? "Replace image response?" : "Submit an image response?"} close={() => !busy && setModal(null)}>
+        <Modal title={hasSavedImage ? "Replace image response?" : "Submit an image response?"} close={() => !busy && setModal(null)}>
           <p>{image.name}</p>
           <p className="muted">
             {mediaActive
-              ? "This replaces the current image for this round. You can replace it again until submissions close."
+              ? hasSavedImage
+                ? "This replaces the current image for this round. You can replace it again until submissions close."
+                : "Your image power-up is already active. This submits the image as your response. You can replace it until submissions close."
               : `This submits the image in place of text, consumes one ${currencyCopy(selectedMedia?.name || "GIF Response")}, and uses your one power-up for the round. You can replace the image until submissions close.`}
           </p>
           <button className="primary full" disabled={busy || !canUpload} onClick={confirmImage}>
-            {mediaActive ? "Replace image" : "Use power-up and submit"}
+            {hasSavedImage ? "Replace image" : mediaActive ? "Submit image response" : "Use power-up and submit"}
           </button>
         </Modal>
       )}
@@ -1377,7 +1377,6 @@ export default function Game({ view = "shop" }: { view?: string }) {
                 .filter(
                   (r: any) =>
                     r.phase === "SUBMISSION" &&
-                    (modal.item.effect === "word_limit" || data.mine.some((s: any) => s.round_id === r.id)) &&
                     !data.active.some((a: any) => a.round_id === r.id),
                 )
                 .map((r: any) => (
@@ -1393,9 +1392,8 @@ export default function Game({ view = "shop" }: { view?: string }) {
             </blockquote>
           )}
           <p className="help">
-            {modal.item.effect === "word_limit"
-              ? "The higher limit applies immediately. You can submit your response afterwards."
-              : "Save a response in an open submission round before activating this item."}
+            The power-up applies to your response for this prompt. Activate before
+            submissions close, then write or upload your response.
           </p>
           <button
             className="primary full"
@@ -1405,7 +1403,6 @@ export default function Game({ view = "shop" }: { view?: string }) {
                 (r: any) =>
                   r.id === modal.roundId &&
                   r.phase === "SUBMISSION" &&
-                  (modal.item.effect === "word_limit" || data.mine.some((s: any) => s.round_id === r.id)) &&
                   !data.active.some((a: any) => a.round_id === r.id),
               )
             }
@@ -1535,7 +1532,7 @@ function Item({
             <span>{inventory ? "owned" : "Likes"}</span>
           </div>
           <button disabled={inventory && !item.enabled} onClick={onClick}>
-            {inventory ? (item.effect === "downvote_shield" ? "Retired" : item.effect === "media_response" ? "Go to response" : "Activate") : "Get power-up"}
+            {inventory ? (item.effect === "downvote_shield" ? "Retired" : "Activate") : "Get power-up"}
             <Plus size={15} />
           </button>
         </div>

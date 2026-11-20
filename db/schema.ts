@@ -376,6 +376,7 @@ export const powerupReservations = sqliteTable(
     catalogRevision: integer("catalog_revision").notNull(),
     name: text().notNull(),
     parameter: integer().notNull(),
+    type: text().notNull().default("word_limit"),
     created: integer().notNull(),
   },
   (t) => [uniqueIndex("one_powerup_reservation").on(t.userId, t.roundId)],

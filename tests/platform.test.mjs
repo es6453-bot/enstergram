@@ -64,7 +64,7 @@ test("libSQL applies all migrations once and exposes fractional server timestamp
     assert.equal(
       (await client.execute("SELECT COUNT(*) AS n FROM _app_migrations"))
         .rows[0].n,
-      17,
+      18,
     );
     assert.equal((await migrate(client)).applied, 0);
     const r = await client.execute("SELECT unixepoch('subsec') AS now");
@@ -157,12 +157,12 @@ test("GIF power-up spends inventory once and exposes media only in the appropria
     await server.mutate("purchase", { itemId: "gif", revision: 1, key: "test" }, { id: "alice" });
     await server.mutate("submit", { roundId: "round", content: "Text draft" }, { id: "alice" });
     const entry = await server.one("SELECT id FROM submissions");
-    await assert.rejects(server.mutate("activate", {
+    await server.mutate("activate", {
       roundId: "round", itemId: "gif", revision: 1, submissionId: entry.id,
-    }, { id: "alice" }), /Choose a GIF or image/);
+    }, { id: "alice" });
     await assert.rejects(server.submitMedia(upload(Buffer.from("<svg/>")), "alice"), /Choose a GIF/);
     assert.equal((await server.one("SELECT content FROM submissions")).content, "Text draft");
-    assert.equal((await server.one("SELECT quantity FROM inventory")).quantity, 1);
+    assert.equal((await server.one("SELECT quantity FROM inventory")).quantity, 0);
     await Promise.all([server.submitMedia(upload(), "alice"), server.submitMedia(upload(), "alice")]);
     assert.equal((await server.one("SELECT quantity FROM inventory")).quantity, 0);
     assert.equal((await server.one("SELECT balance FROM wallets WHERE user_id='alice'")).balance, 50);
@@ -432,6 +432,82 @@ test("instant word expansion purchases activate without submissions and preserve
     assert.equal((await server.one("SELECT balance FROM wallets")).balance, 90);
     assert.equal((await server.one("SELECT COUNT(*) AS n FROM activations")).n, 1);
     assert.equal((await server.state("alice")).active.length, 1);
+  } finally {
+    client.close();
+  }
+});
+
+test("every supported power-up can activate before a response while the submission deadline stays enforced", async () => {
+  const client = await fresh();
+  try {
+    const { DEFAULTS } = await import("../.test-runtime/platform/rules.mjs");
+    const now = Date.now();
+    await client.execute({
+      sql: "INSERT INTO rounds(id,number,prompt,opens,closes,ends,config) VALUES('current',1,'Prompt',?,?,?,?)",
+      args: [now - 1000, now + 60000, now + 120000, JSON.stringify(DEFAULTS)],
+    });
+    const definitions = [
+      ["word", "word_limit", 15], ["boost", "positive_multiplier", 2],
+      ["likes", "clout_multiplier", 3], ["media", "media_response", 1],
+    ];
+    for (const [user, effect, parameter] of definitions) {
+      await client.batch([
+        { sql: "INSERT INTO profiles(id,name) VALUES(?,?)", args: [user, user] },
+        { sql: "INSERT INTO wallets VALUES(?,0)", args: [user] },
+        { sql: "INSERT INTO ledger VALUES(?,?,NULL,'starting',1000,'test',0)", args: [`grant-${user}`, user] },
+        { sql: "INSERT INTO catalog(id,name,description,icon,cost,effect,parameter) VALUES(?,?,'Power-up','Zap',10,?,?)",
+          args: [user, user, effect, parameter] },
+      ], "write");
+      const purchase = { key: `purchase-${user}`, itemId: user, revision: 1, activateRoundId: "current" };
+      await Promise.all([
+        server.mutate("purchase", purchase, { id: user }),
+        server.mutate("purchase", purchase, { id: user }),
+      ]);
+      assert.equal((await server.one("SELECT balance FROM wallets WHERE user_id=?", user)).balance, 990);
+      const state = await server.state(user);
+      assert.equal(state.active[0].type, effect);
+      assert.equal(state.active[0].parameter, parameter);
+      assert.equal(state.active[0].submission_id, null);
+      await client.execute({ sql: "UPDATE catalog SET effect='word_limit',parameter=20,revision=2,enabled=0 WHERE id=?", args: [user] });
+    }
+    assert.equal((await server.one("SELECT COUNT(*) AS n FROM submissions")).n, 0);
+    assert.equal((await server.one("SELECT COUNT(*) AS n FROM receipts")).n, 0);
+    for (const [user] of definitions.slice(0, 3))
+      await server.mutate("submit", { roundId: "current", content: "This response has five words" }, { id: user });
+    const gif = await sharp({ create: { width: 4, height: 4, channels: 3, background: "orange" } }).gif().toBuffer();
+    const form = new FormData();
+    form.set("roundId", "current");
+    form.set("image", new File([gif], "animation.gif", { type: "image/gif" }));
+    await server.submitMedia(form, "media");
+    for (const [user, effect, parameter] of definitions) {
+      const applied = await server.one(
+        "SELECT e.type,e.parameter FROM effects e JOIN activations a ON a.id=e.activation_id WHERE a.user_id=?", user,
+      );
+      assert.equal(applied.type, effect);
+      assert.equal(applied.parameter, parameter);
+      assert.equal((await server.one("SELECT quantity FROM inventory WHERE user_id=?", user)).quantity, 0);
+      assert.equal((await server.state(user)).active.length, 1);
+    }
+    await client.batch([
+      "INSERT INTO profiles(id,name) VALUES('late','Late')",
+      "INSERT INTO inventory VALUES('late-stock','late','word',1)",
+      "UPDATE catalog SET enabled=1 WHERE id='word'",
+      "DROP TRIGGER round_snapshot",
+      { sql: "UPDATE rounds SET closes=? WHERE id='current'", args: [now - 100] },
+    ], "write");
+    await assert.rejects(server.mutate("activate", {
+      itemId: "word", revision: 2, roundId: "current",
+    }, { id: "late" }), /unavailable/);
+    assert.equal((await server.one("SELECT quantity FROM inventory WHERE user_id='late'")).quantity, 1);
+    const entries = await server.all("SELECT user_id,id FROM submissions");
+    await server.mutate("vote", {
+      roundId: "current",
+      choices: ["boost", "likes", "media"].map((user) => entries.find((entry) => entry.user_id === user).id),
+    }, { id: "word" });
+    await client.execute({ sql: "UPDATE rounds SET ends=? WHERE id='current'", args: [Date.now() - 10] });
+    await server.finalizeDueRounds();
+    assert.equal((await server.one("SELECT score FROM results WHERE user_id='boost'")).score, 6);
+    assert.equal((await server.one("SELECT amount FROM ledger WHERE user_id='likes' AND kind='brand'")).amount, 20);
   } finally {
     client.close();
   }
