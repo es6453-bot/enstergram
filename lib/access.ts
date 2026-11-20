@@ -293,6 +293,12 @@ export async function recordGoogleLogin(
 export async function accessState(db: GameDatabase, actor: string) {
   await requireOwner(db, actor);
   return {
+    votingRounds: (
+      await db.prepare(
+        `SELECT id,number,prompt,ends FROM rounds WHERE cancelled=0 AND finalized IS NULL
+         AND closes<=unixepoch('subsec')*1000 ORDER BY closes DESC`,
+      ).all()
+    ).results,
     staff: (
       await db
         .prepare(
@@ -317,7 +323,7 @@ export async function accessState(db: GameDatabase, actor: string) {
     audit: (
       await db
         .prepare(
-          "SELECT action,payload,created FROM audit WHERE action LIKE 'admin_%' OR action='owner_bootstrap' ORDER BY created DESC LIMIT 50",
+          "SELECT action,payload,created FROM audit WHERE action LIKE 'admin_%' OR action IN ('owner_bootstrap','owner_close_voting') ORDER BY created DESC LIMIT 50",
         )
         .all()
     ).results,

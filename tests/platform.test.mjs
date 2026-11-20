@@ -64,7 +64,7 @@ test("libSQL applies all migrations once and exposes fractional server timestamp
     assert.equal(
       (await client.execute("SELECT COUNT(*) AS n FROM _app_migrations"))
         .rows[0].n,
-      16,
+      17,
     );
     assert.equal((await migrate(client)).applied, 0);
     const r = await client.execute("SELECT unixepoch('subsec') AS now");
@@ -389,6 +389,101 @@ test("response awards, voting reactions, the winner badge and comment images res
     client.close();
   }
 });
+test("instant word expansion purchases activate without submissions and preserve their snapshot through concurrent retries", async () => {
+  const client = await fresh();
+  try {
+    const { DEFAULTS } = await import("../.test-runtime/platform/rules.mjs");
+    const now = Date.now();
+    await client.batch([
+      "INSERT INTO profiles VALUES('alice','Alice','player',0)",
+      "INSERT INTO wallets VALUES('alice',0)",
+      "INSERT INTO ledger VALUES('starting','alice',NULL,'starting',100,'test',0)",
+      { sql: "INSERT INTO settings VALUES(1,?,1)", args: [JSON.stringify(DEFAULTS)] },
+      "INSERT INTO catalog(id,name,description,icon,cost,effect,parameter) VALUES('speaker','Loudspeakers','15 words','Type',10,'word_limit',15)",
+      { sql: "INSERT INTO rounds(id,number,prompt,opens,closes,ends,config) VALUES('current',1,'Prompt',?,?,?,?)",
+        args: [now - 1000, now + 60000, now + 120000, JSON.stringify(DEFAULTS)] },
+    ], "write");
+    const purchase = { action: "purchase", key: "instant", itemId: "speaker", revision: 1, activateRoundId: "current" };
+    await Promise.all([server.mutate("purchase", purchase, { id: "alice" }), server.mutate("purchase", purchase, { id: "alice" })]);
+    assert.equal((await server.one("SELECT balance FROM wallets")).balance, 90);
+    assert.equal((await server.one("SELECT quantity FROM inventory")).quantity, 0);
+    assert.equal((await server.one("SELECT COUNT(*) AS n FROM powerup_reservations")).n, 1);
+    assert.equal((await server.one("SELECT COUNT(*) AS n FROM submissions")).n, 0);
+    assert.equal((await server.one("SELECT COUNT(*) AS n FROM receipts")).n, 0);
+    const state = await server.state("alice");
+    assert.equal(state.active[0].type, "word_limit");
+    assert.equal(state.active[0].parameter, 15);
+    assert.equal(state.active[0].submission_id, null);
+    await assert.rejects(server.mutate("purchase", { ...purchase, key: "conflict" }, { id: "alice" }));
+    assert.equal((await server.one("SELECT balance FROM wallets")).balance, 90);
+    assert.equal((await server.one("SELECT COUNT(*) AS n FROM purchases")).n, 1);
+    await client.execute("UPDATE catalog SET parameter=20,revision=2,enabled=0 WHERE id='speaker'");
+    const content = "one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen";
+    await server.mutate("submit", { roundId: "current", content }, { id: "alice" });
+    await server.mutate("submit", { roundId: "current", content }, { id: "alice" });
+    const activation = await server.one("SELECT * FROM activations");
+    const effect = await server.one("SELECT * FROM effects");
+    assert.equal(effect.parameter, 15);
+    assert.equal(effect.submission_id, activation.submission_id);
+    assert.equal((await server.one("SELECT COUNT(*) AS n FROM receipts")).n, 1);
+    assert.equal((await server.one("SELECT quantity FROM inventory")).quantity, 0);
+    await server.mutate("purchase", purchase, { id: "alice" });
+    await server.mutate("activate", { roundId: "current", itemId: "speaker", revision: 1 }, { id: "alice" });
+    assert.equal((await server.one("SELECT balance FROM wallets")).balance, 90);
+    assert.equal((await server.one("SELECT COUNT(*) AS n FROM activations")).n, 1);
+    assert.equal((await server.state("alice")).active.length, 1);
+  } finally {
+    client.close();
+  }
+});
+
+test("only the Owner can end voting early and immediate results and reward settlement remain idempotent", async () => {
+  const client = await fresh();
+  try {
+    const { DEFAULTS } = await import("../.test-runtime/platform/rules.mjs");
+    const now = Date.now();
+    await client.batch([
+      "INSERT INTO profiles VALUES('owner','Owner','player',0),('admin','Admin','player',0),('alice','Alice','player',0),('bob','Bob','player',0)",
+      "INSERT INTO wallets VALUES('alice',0),('bob',0)",
+      "INSERT INTO auth_identities VALUES('google','owner-subject','owner',1),('google','admin-subject','admin',1)",
+      "INSERT INTO google_accounts VALUES('owner-subject','owner','owner@example.com',1),('admin-subject','admin','admin@example.com',1)",
+      "INSERT INTO staff_roles VALUES('owner','owner','owner-subject','owner',1),('admin','admin','admin-subject','owner',1)",
+      { sql: "INSERT INTO rounds(id,number,prompt,opens,closes,ends,config) VALUES('vote',1,'Voting prompt',?,?,?,?)",
+        args: [now - 60000, now - 30000, now + 120000, JSON.stringify(DEFAULTS)] },
+      { sql: "INSERT INTO rounds(id,number,prompt,opens,closes,ends,config) VALUES('today',2,'Today prompt',?,?,?,?)",
+        args: [now - 1000, now + 60000, now + 120000, JSON.stringify(DEFAULTS)] },
+      "DROP TRIGGER submission_insert_window",
+      "INSERT INTO submissions VALUES('entry','vote','alice','Response',0)",
+    ], "write");
+    await server.mutate("vote", { roundId: "vote", choices: ["entry", null, null] }, { id: "bob" });
+    const close = (id, roundId = "vote") => server.mutate("closeVotingEarly", { roundId }, { id, role: "owner" });
+    for (const id of ["admin", "alice"])
+      await assert.rejects(close(id), /Only the Owner/);
+    await assert.rejects(close("owner", "today"), /currently open for voting/);
+    await assert.rejects(client.execute(
+      "INSERT INTO round_closures SELECT id,'admin',ends,CAST(unixepoch('subsec')*1000 AS INTEGER) FROM rounds WHERE id='vote'",
+    ), /Only the Owner/);
+    assert.equal((await server.one("SELECT COUNT(*) AS n FROM round_closures")).n, 0);
+    await Promise.all([close("owner"), close("owner")]);
+    const closed = await server.one("SELECT * FROM rounds WHERE id='vote'");
+    assert.ok(closed.finalized);
+    assert.ok(closed.ends < now + 120000 && closed.ends <= Date.now());
+    assert.equal((await server.one("SELECT original_ends FROM round_closures")).original_ends, now + 120000);
+    assert.equal((await server.feed("vote", "bob")).entries[0].score, 3);
+    await assert.rejects(server.mutate("vote", { roundId: "vote", choices: ["entry", null, null] }, { id: "bob" }), /Voting is closed/);
+    await assert.rejects(client.execute("UPDATE ballots SET choices='[null,null,null]' WHERE round_id='vote'"), /Voting window closed/);
+    await close("owner");
+    await server.finalizeDueRounds();
+    assert.equal((await server.one("SELECT COUNT(*) AS n FROM results")).n, 1);
+    assert.equal((await server.one("SELECT COUNT(*) AS n FROM ledger WHERE kind='voting'")).n, 1);
+    assert.equal((await server.one("SELECT COUNT(*) AS n FROM audit WHERE action='owner_close_voting'")).n, 1);
+    assert.equal((await server.one("SELECT finalized FROM rounds WHERE id='today'")).finalized, null);
+    await assert.rejects(client.execute("UPDATE rounds SET ends=ends-1 WHERE id='vote'"), /immutable/);
+  } finally {
+    client.close();
+  }
+});
+
 test("real libSQL write batches roll back all operations and reject concurrent overspending", async () => {
   const client = await fresh();
   const db = globalThis.__platformDb;
@@ -547,7 +642,7 @@ test("GitHub access defaults to owner-only and uses stable numeric verified subj
 async function snapshotOf(client) {
   const names = (
     await client.execute(
-      "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT IN ('_app_migrations','auth_identities','auth_users','player_handles','auth_verification_tokens','auth_link_tokens','auth_rate_limits','google_accounts','staff_roles','admin_invitations','player_suspensions','submission_media','response_comments','response_awards','response_reactions','achievement_notifications')",
+      "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT IN ('_app_migrations','auth_identities','auth_users','player_handles','auth_verification_tokens','auth_link_tokens','auth_rate_limits','google_accounts','staff_roles','admin_invitations','player_suspensions','submission_media','response_comments','response_awards','response_reactions','achievement_notifications','powerup_reservations','round_closures')",
     )
   ).rows.map((x) => x.name);
   const tables = {};

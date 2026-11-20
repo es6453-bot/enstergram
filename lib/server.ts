@@ -5,6 +5,7 @@ import {
   roleFor,
   isStaff,
   requireStaff,
+  requireOwner,
   requireActive,
   moderatePlayer,
 } from "./access";
@@ -48,6 +49,32 @@ export async function one(s: string, ...v: any[]): Promise<any> {
   return stmt(s, ...v).first();
 }
 export const id = () => crypto.randomUUID();
+function reserveWordPowerup(
+  userId: string, roundId: string, itemId: string, revision: number, activationId = id(),
+) {
+  return stmt(
+    `INSERT INTO powerup_reservations(id,user_id,round_id,item_id,catalog_revision,name,parameter,created)
+     VALUES(?,?,?,?,?,(SELECT name FROM catalog WHERE id=?),(SELECT parameter FROM catalog WHERE id=?),?)`,
+    activationId, userId, roundId, itemId, revision, itemId, itemId, Date.now(),
+  );
+}
+
+async function closeVotingEarly(roundId: string, ownerId: string) {
+  await requireOwner(db(), ownerId);
+  let round = await one("SELECT * FROM rounds WHERE id=?", roundId);
+  if (!round || round.cancelled) throw new Error("Choose an active voting round.");
+  if (!round.finalized && !(await one("SELECT round_id FROM round_closures WHERE round_id=?", roundId))) {
+    if (phase(round) !== "VOTING") throw new Error("Choose a round currently open for voting.");
+    await stmt(
+      `INSERT INTO round_closures(round_id,owner_id,original_ends,closed)
+       SELECT id,?,ends,CAST(unixepoch('subsec')*1000 AS INTEGER) FROM rounds
+       WHERE id=? AND NOT EXISTS(SELECT 1 FROM round_closures WHERE round_id=?)`,
+      ownerId, roundId, roundId,
+    ).run();
+  }
+  round = await one("SELECT * FROM rounds WHERE id=?", roundId);
+  await finalize(round);
+}
 export async function setup(user: {
   userId: string;
   displayName: string;
@@ -371,7 +398,11 @@ export async function state(userId: string) {
     userId,
   );
   const active = await all(
-    "SELECT a.round_id,a.submission_id,e.* FROM activations a JOIN effects e ON e.activation_id=a.id WHERE a.user_id=?",
+    `SELECT a.round_id,a.submission_id,e.activation_id,e.name,e.type,e.parameter
+     FROM activations a JOIN effects e ON e.activation_id=a.id WHERE a.user_id=?
+     UNION ALL SELECT p.round_id,NULL,p.id,p.name,'word_limit',p.parameter FROM powerup_reservations p
+     WHERE p.user_id=? AND NOT EXISTS(SELECT 1 FROM activations WHERE id=p.id)`,
+    userId,
     userId,
   );
   const serverNow = Date.now();
@@ -529,7 +560,10 @@ export async function submitMedia(form: FormData, userId: string) {
   if (!r || phase(r) !== "SUBMISSION")
     throw new Error("Submissions are closed.");
   const active = await one(
-    "SELECT a.item_id,e.type FROM activations a JOIN effects e ON a.id=e.activation_id WHERE a.user_id=? AND a.round_id=?",
+    `SELECT a.item_id,e.type FROM activations a JOIN effects e ON a.id=e.activation_id WHERE a.user_id=? AND a.round_id=?
+     UNION ALL SELECT item_id,'word_limit' FROM powerup_reservations WHERE user_id=? AND round_id=?`,
+    userId,
+    roundId,
     userId,
     roundId,
   );
@@ -603,6 +637,9 @@ export async function mutate(action: string, b: any, user: any) {
   if (action === "purchase") {
     if (typeof b.key !== "string" || b.key.length > 100)
       throw new Error("A purchase key is required.");
+    const activateRoundId = b.activateRoundId;
+    if (activateRoundId !== undefined && (typeof activateRoundId !== "string" || !activateRoundId || activateRoundId.length > 100))
+      throw new Error("Choose an open prompt for activation.");
     const prior = await one(
       "SELECT * FROM purchases WHERE id=?",
       `${u}:${b.key}`,
@@ -610,23 +647,36 @@ export async function mutate(action: string, b: any, user: any) {
     if (prior) {
       if (prior.user_id !== u || prior.item_id !== b.itemId)
         throw new Error("Purchase key conflict.");
+      if (activateRoundId && !(await one(
+        "SELECT id FROM powerup_reservations WHERE id=? AND round_id=? AND user_id=? AND item_id=?",
+        prior.id, activateRoundId, u, b.itemId,
+      ))) throw new Error("Purchase key conflict.");
       return;
     }
+    if (activateRoundId && (await one("SELECT effect FROM catalog WHERE id=?", b.itemId))?.effect !== "word_limit")
+      throw new Error("Instant purchase and activation is available for word expansion power-ups.");
     try {
-      await stmt(
+      const purchase = stmt(
         "INSERT INTO purchases(id,user_id,item_id,created,catalog_revision) VALUES(?,?,?,?,?)",
         `${u}:${b.key}`,
         u,
         b.itemId,
         now,
         b.revision,
-      ).run();
+      );
+      await db().batch(activateRoundId
+        ? [purchase, reserveWordPowerup(u, activateRoundId, b.itemId, b.revision, `${u}:${b.key}`)]
+        : [purchase]);
     } catch (error) {
       const done = await one(
         "SELECT user_id,item_id FROM purchases WHERE id=?",
         `${u}:${b.key}`,
       );
       if (!done || done.user_id !== u || done.item_id !== b.itemId) throw error;
+      if (activateRoundId && !(await one(
+        "SELECT id FROM powerup_reservations WHERE id=? AND round_id=? AND user_id=? AND item_id=?",
+        `${u}:${b.key}`, activateRoundId, u, b.itemId,
+      ))) throw error;
     }
     return;
   }
@@ -635,7 +685,10 @@ export async function mutate(action: string, b: any, user: any) {
     if (!r || phase(r) !== "SUBMISSION")
       throw new Error("Submissions are closed.");
     const effect = await one(
-      "SELECT parameter FROM effects e JOIN activations a ON a.id=e.activation_id WHERE a.user_id=? AND a.round_id=? AND e.type='word_limit'",
+      `SELECT parameter FROM effects e JOIN activations a ON a.id=e.activation_id WHERE a.user_id=? AND a.round_id=? AND e.type='word_limit'
+       UNION ALL SELECT parameter FROM powerup_reservations WHERE user_id=? AND round_id=?`,
+      u,
+      r.id,
       u,
       r.id,
     );
@@ -670,6 +723,20 @@ export async function mutate(action: string, b: any, user: any) {
     return;
   }
   if (action === "activate") {
+    const reservation = await one(
+      "SELECT item_id FROM powerup_reservations WHERE user_id=? AND round_id=?",
+      u, b.roundId,
+    );
+    if (reservation) {
+      if (reservation.item_id === b.itemId) {
+        if (b.submissionId && !(await one(
+          "SELECT id FROM submissions WHERE id=? AND user_id=? AND round_id=?",
+          b.submissionId, u, b.roundId,
+        ))) throw new Error("Activation is unavailable, expired, or unauthorized");
+        return;
+      }
+      throw new Error("You already used this round’s activation.");
+    }
     const prior = await one(
       "SELECT * FROM activations WHERE user_id=? AND round_id=?",
       u,
@@ -679,6 +746,22 @@ export async function mutate(action: string, b: any, user: any) {
       if (prior.item_id === b.itemId && prior.submission_id === b.submissionId)
         return;
       throw new Error("You already used this round’s activation.");
+    }
+    if ((await one("SELECT effect FROM catalog WHERE id=?", b.itemId))?.effect === "word_limit") {
+      if (b.submissionId && !(await one(
+        "SELECT id FROM submissions WHERE id=? AND user_id=? AND round_id=?",
+        b.submissionId, u, b.roundId,
+      ))) throw new Error("Activation is unavailable, expired, or unauthorized");
+      try {
+        await reserveWordPowerup(u, b.roundId, b.itemId, b.revision).run();
+      } catch (error) {
+        const done = await one(
+          "SELECT item_id FROM powerup_reservations WHERE user_id=? AND round_id=?",
+          u, b.roundId,
+        );
+        if (done?.item_id !== b.itemId) throw error;
+      }
+      return;
     }
     try {
       await stmt(
@@ -746,6 +829,11 @@ export async function mutate(action: string, b: any, user: any) {
       activityStatement(db(), u, "voting", r.id, now),
     ]);
     return;
+  }
+  if (action === "closeVotingEarly") {
+    if (typeof b.roundId !== "string" || b.roundId.length > 100)
+      throw new Error("Choose a voting round.");
+    return closeVotingEarly(b.roundId, u);
   }
   await requireStaff(db(), u);
   if (action === "responseAward")

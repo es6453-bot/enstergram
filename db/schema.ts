@@ -366,6 +366,26 @@ export const inventory = sqliteTable(
     check("no_negative_stock", sql`${t.quantity} >= 0`),
   ],
 );
+export const powerupReservations = sqliteTable(
+  "powerup_reservations",
+  {
+    id: text().primaryKey(),
+    userId: text("user_id").notNull().references(() => profiles.id),
+    roundId: text("round_id").notNull().references(() => rounds.id),
+    itemId: text("item_id").notNull().references(() => catalog.id),
+    catalogRevision: integer("catalog_revision").notNull(),
+    name: text().notNull(),
+    parameter: integer().notNull(),
+    created: integer().notNull(),
+  },
+  (t) => [uniqueIndex("one_powerup_reservation").on(t.userId, t.roundId)],
+);
+export const roundClosures = sqliteTable("round_closures", {
+  roundId: text("round_id").primaryKey().references(() => rounds.id),
+  ownerId: text("owner_id").notNull().references(() => profiles.id),
+  originalEnds: integer("original_ends").notNull(),
+  closed: integer().notNull(),
+});
 export const activations = sqliteTable(
   "activations",
   {

@@ -12,6 +12,7 @@ type Account = {
   role?: string;
 };
 type AccessData = {
+  votingRounds: { id: string; number: number; prompt: string; ends: number }[];
   staff: Account[];
   invitations: { id: string; email: string; created: number }[];
   accounts: Account[];
@@ -24,7 +25,8 @@ export default function AccessManagement() {
     [busy, setBusy] = useState(false),
     [email, setEmail] = useState(""),
     [selected, setSelected] = useState(""),
-    [confirm, setConfirm] = useState<Account | null>(null);
+    [confirm, setConfirm] = useState<Account | null>(null),
+    [closingRound, setClosingRound] = useState<string | null>(null);
   const load = useCallback(async () => {
     try {
       const r = await fetch("/api/admin/access", { cache: "no-store" }),
@@ -76,6 +78,27 @@ export default function AccessManagement() {
       setBusy(false);
     }
   }
+  async function endVoting(roundId: string) {
+    setBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      const response = await fetch("/api/game", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "closeVotingEarly", roundId }),
+      });
+      const next = await response.json();
+      if (!response.ok) throw new Error(next.error);
+      setClosingRound(null);
+      await load();
+      setMessage("Voting ended. Results are published.");
+    } catch (cause) {
+      setError((cause as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
   return (
     <main
       className="admin-main access-management"
@@ -101,6 +124,27 @@ export default function AccessManagement() {
           {message}
         </p>
       )}
+      <section className="panel editor-form" style={{ padding: 24, marginTop: 24 }}>
+        <h2>Owner voting controls</h2>
+        <p className="muted">End a voting round now and publish its results. This closes ballots immediately and settles round rewards.</p>
+        {data?.votingRounds.length === 0 && <p className="muted">No rounds are waiting for results.</p>}
+        {data?.votingRounds.map((round) => (
+          <article key={round.id}>
+            <h3>Round #{round.number} · {round.prompt}</h3>
+            <p>Scheduled results {new Date(round.ends).toLocaleString("en-US", { timeZone: "America/New_York" })} ET</p>
+            {closingRound === round.id ? (
+              <div>
+                <p role="alert">End voting for this round and reveal the results now? This cannot be undone.</p>
+                <button className="primary" disabled={busy} onClick={() => void endVoting(round.id)}>End vote & publish results</button>
+                <button className="secondary" disabled={busy} onClick={() => setClosingRound(null)}>Cancel</button>
+              </div>
+            ) : (
+              <button className="secondary" disabled={busy} onClick={() => setClosingRound(round.id)}>End vote early</button>
+            )}
+          </article>
+        ))}
+        <Link className="secondary" href="/results">View published results</Link>
+      </section>
       <section
         className="panel editor-form"
         style={{ padding: 24, marginTop: 24 }}
